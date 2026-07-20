@@ -16,7 +16,7 @@ pnpm install
 pnpm dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
+Open (https://weavelink-sandy.vercel.app/).
 
 ## Demo routes for your pitch video
 
