@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+:root {
+  --mist: #f3f5f8;
+  --paper: #fffcf8;
+  --ink: #121820;
+  --indigo: #152238;
+  --indigo-mid: #2a3f66;
+  --indigo-soft: #dfe6f2;
+  --lac: #a63d4a;
+  --loom: #1a5c4a;
+  --loom-soft: #d8ebe4;
+  --warp-gold: #b8963e;
+  --warp-gold-soft: #f3ead0;
+  --cotton: #e8ecf1;
+  --muted: #5c6675;
+  --line: rgba(21, 34, 56, 0.1);
+  --shadow: 0 18px 50px rgba(21, 34, 56, 0.08);
+  --radius: 1rem;
+  --background: var(--mist);
+  --foreground: var(--ink);
+}
+
+@theme inline {
+  --color-mist: var(--mist);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-indigo: var(--indigo);
+  --color-indigo-mid: var(--indigo-mid);
+  --color-indigo-soft: var(--indigo-soft);
+  --color-lac: var(--lac);
+  --color-loom: var(--loom);
+  --color-loom-soft: var(--loom-soft);
+  --color-warp-gold: var(--warp-gold);
+  --color-warp-gold-soft: var(--warp-gold-soft);
+  --color-cotton: var(--cotton);
+  --color-muted: var(--muted);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-figtree);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-figtree), system-ui, sans-serif;
+  min-height: 100%;
+}
+
+::selection {
+  background: var(--indigo-soft);
+  color: var(--indigo);
+}
+
+.font-display {
+  font-family: var(--font-fraunces), Georgia, serif;
+}
+
+.warp-grid {
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 47px,
+    rgba(21, 34, 56, 0.045) 47px,
+    rgba(21, 34, 56, 0.045) 48px
+  );
+}
+
+.hero-wash {
+  background:
+    radial-gradient(ellipse 80% 60% at 70% 20%, rgba(42, 63, 102, 0.12), transparent 55%),
+    radial-gradient(ellipse 50% 40% at 10% 80%, rgba(26, 92, 74, 0.1), transparent 50%),
+    linear-gradient(180deg, #eef1f6 0%, var(--mist) 55%, #ebe7df 100%);
+}
+
+.grain {
+  position: relative;
+}
+
+.grain::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+@keyframes warp-drift {
+  from {
+    transform: translateY(-8%);
+  }
+  to {
+    transform: translateY(8%);
+  }
+}
+
+@keyframes pulse-ring {
+  0% {
+    transform: scale(0.92);
+    opacity: 0.55;
+  }
+  70% {
+    transform: scale(1.2);
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.animate-warp {
+  animation: warp-drift 9s ease-in-out infinite alternate;
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 2.4s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-warp,
+  .animate-pulse-ring {
+    animation: none;
+  }
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--indigo-mid);
+  outline-offset: 3px;
+}
