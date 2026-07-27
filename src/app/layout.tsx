@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Figtree, Fraunces } from "next/font/google";
-import { DemoBanner } from "@/components/DemoBanner";
+import { BackendStatusBanner } from "@/components/BackendStatusBanner";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
 import "./globals.css";
@@ -37,7 +37,7 @@ export default function RootLayout({
       className={`${figtree.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-mist text-ink">
-        <DemoBanner />
+        <BackendStatusBanner />
         <SiteHeader />
         <main className="flex-1">{children}</main>
         <SiteFooter />

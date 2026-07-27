@@ -2,7 +2,7 @@
 # Docs: https://render.com/docs/blueprint-spec
 #
 # After deploy:
-# 1. Copy the service URL (e.g. https://weavelink-api.onrender.com)
+# 1. Copy the service URL (e.g. https://weavelink.onrender.com)
 # 2. Set Vercel env NEXT_PUBLIC_WEAVELINK_API_URL=https://…/api/v1
 # 3. Set BACKEND_CORS_ORIGINS to your Vercel frontend origin(s)
 

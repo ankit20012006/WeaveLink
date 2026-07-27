@@ -22,7 +22,7 @@ uv sync
 uv run uvicorn app.main:app --reload
 ```
 
-Leave `DATABASE_URL` empty to use the in-memory `demo_store` (seed catalog + RFQ + listing create).
+Leave `DATABASE_URL` empty to use the in-memory seed store (catalog + RFQ + listing create) for quick bootstraps.
 
 ## Render deploy
 
@@ -41,7 +41,7 @@ Summary:
 Required env for a browser frontend:
 
 - `BACKEND_CORS_ORIGINS` — Vercel origin(s), comma-separated
-- `DEMO_SEED_ENABLED=true` — demo catalog + `X-Demo-Weaver-Id` seller actions
+- `DEMO_SEED_ENABLED=true` — seed catalog + `X-Demo-Weaver-Id` actor header
 
 Optional:
 
@@ -65,7 +65,7 @@ Blueprint file: [`../render.yaml`](../render.yaml).
 - `GET /api/v1/catalog/verify/{serial}`
 - `GET /api/v1/catalog/clusters` · `/techniques` · `/categories`
 - `GET /api/v1/catalog/seller/{weaver_id}/orders` · `/products` · `/stats` · `/rfqs`
-- `GET /api/v1/catalog/me/orders` · `/products` · `/rfqs` · `/stats` (JWT or demo header)
+- `GET /api/v1/catalog/me/orders` · `/products` · `/rfqs` · `/stats` (JWT or seed actor header)
 - `POST /api/v1/catalog/rfq`
 - `PATCH /api/v1/catalog/rfq/{rfq_id}`
 - `POST /api/v1/catalog/products`
@@ -77,7 +77,7 @@ Blueprint file: [`../render.yaml`](../render.yaml).
 
 Responses use camelCase aliases for frontend compatibility.
 
-## Demo seller header
+## Seed actor header
 
 When `DEMO_SEED_ENABLED=true`:
 
@@ -85,7 +85,7 @@ When `DEMO_SEED_ENABLED=true`:
 X-Demo-Weaver-Id: w-lakshmi
 ```
 
-acts as a verified weaver for listing create / RFQ status without Supabase.
+acts as a verified weaver for listing create / RFQ status in seed mode.
 
 ## Supabase notes
 

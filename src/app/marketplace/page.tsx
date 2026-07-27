@@ -3,24 +3,17 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ProductCard } from "@/components/ProductCard";
 import { RefreshCw, Search, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import type { Product } from "@/data/mock";
 import {
-  fallbackCatalogCategories,
-  fallbackCatalogProducts,
-  fallbackClusters,
-  fallbackTechniques,
+  type Product,
   listCatalogCategories,
   listCatalogProducts,
   listClusters,
   listTechniques,
 } from "@/lib/weavelink-api";
 
-const FALLBACK_CLUSTERS = [...fallbackClusters()];
-const FALLBACK_TECHNIQUES = [...fallbackTechniques()];
-const FALLBACK_CATEGORIES = [...fallbackCatalogCategories()];
-
 const FALLBACK_TEXT =
-  "Showing demo catalog from local seed data while the API is unreachable.";
+  "Could not load catalog from API. Please check backend connectivity.";
+const BASE_FILTER_OPTIONS = ["All clusters", "All techniques", "All categories"];
 
 export default function MarketplacePage() {
   const [query, setQuery] = useState("");
@@ -33,10 +26,10 @@ export default function MarketplacePage() {
   >("featured");
   const [minPriceInput, setMinPriceInput] = useState("");
   const [maxPriceInput, setMaxPriceInput] = useState("");
-  const [clusters, setClusters] = useState<string[]>(FALLBACK_CLUSTERS);
-  const [techniques, setTechniques] = useState<string[]>(FALLBACK_TECHNIQUES);
-  const [categories, setCategories] = useState<string[]>(FALLBACK_CATEGORIES);
-  const [products, setProducts] = useState<Product[]>(fallbackCatalogProducts());
+  const [clusters, setClusters] = useState<string[]>([BASE_FILTER_OPTIONS[0]]);
+  const [techniques, setTechniques] = useState<string[]>([BASE_FILTER_OPTIONS[1]]);
+  const [categories, setCategories] = useState<string[]>([BASE_FILTER_OPTIONS[2]]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [isApiEnabled, setIsApiEnabled] = useState(true);
   const [isCatalogLoading, setIsCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -95,17 +88,17 @@ export default function MarketplacePage() {
         ]);
 
       setProducts(catalogProducts);
-      setClusters(catalogClusters);
-      setTechniques(catalogTechniques);
-      setCategories(catalogCategories);
+      setClusters([BASE_FILTER_OPTIONS[0], ...catalogClusters]);
+      setTechniques([BASE_FILTER_OPTIONS[1], ...catalogTechniques]);
+      setCategories([BASE_FILTER_OPTIONS[2], ...catalogCategories]);
       setIsApiEnabled(true);
       setCatalogError(null);
       return;
     } catch {
-      setProducts(fallbackCatalogProducts());
-      setClusters(FALLBACK_CLUSTERS);
-      setTechniques(FALLBACK_TECHNIQUES);
-      setCategories(FALLBACK_CATEGORIES);
+      setProducts([]);
+      setClusters([BASE_FILTER_OPTIONS[0]]);
+      setTechniques([BASE_FILTER_OPTIONS[1]]);
+      setCategories([BASE_FILTER_OPTIONS[2]]);
       setIsApiEnabled(false);
       setCatalogError(FALLBACK_TEXT);
     } finally {
@@ -176,15 +169,15 @@ export default function MarketplacePage() {
     sortBy,
   ]);
 
-  const filtered = isApiEnabled ? products : localFilteredProducts;
-  const sourceText = isApiEnabled ? "Live API" : "Fallback seed";
+  const filtered = localFilteredProducts;
+  const sourceText = isApiEnabled ? "Live API" : "API unavailable";
   const sourceTone = isApiEnabled
     ? "border-loom-soft bg-loom-soft text-loom"
-    : "border-lac/35 bg-lac-soft text-lac";
+    : "border-warp-gold/40 bg-warp-gold-soft text-warp-gold";
 
   const sourceNote = isApiEnabled
     ? "Catalog currently uses API-backed results."
-    : "Catalog is using local seed fallback while API is unavailable.";
+    : "Catalog data is currently unavailable.";
 
   const clearFilters = () => {
     setQuery("");

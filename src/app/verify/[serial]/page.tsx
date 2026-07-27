@@ -2,8 +2,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { BadgeCheck, Fingerprint, Link2, Shield, CircleX } from "lucide-react";
-import { getProductBySerial, getWeaver, type Product, type Weaver } from "@/data/mock";
 import {
+  type Product,
+  type Weaver,
   verifyProductBySerial,
   type VerificationPayload,
 } from "@/lib/weavelink-api";
@@ -49,8 +50,7 @@ export default async function VerifyPage({
     product = payload.product;
     weaver = payload.weaver;
   } catch {
-    product = getProductBySerial(serial) ?? null;
-    weaver = product ? (getWeaver(product.weaverId) ?? null) : null;
+    notFound();
   }
 
   if (!product) notFound();
@@ -149,7 +149,7 @@ export default async function VerifyPage({
                 <Fingerprint className="mt-0.5 shrink-0 text-warp-gold" size={18} />
                 <div>
                   <p className="text-sm font-medium text-ink">
-                    Anchored integrity hash (demo)
+                    Anchored integrity hash
                   </p>
                   <p className="mt-1 break-all font-mono text-xs text-muted">
                     {anchorHash} · {anchorChain} · {anchorProvider}

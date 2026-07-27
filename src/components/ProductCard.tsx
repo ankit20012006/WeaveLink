@@ -1,13 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { Product } from "@/data/mock";
-import { getWeaver } from "@/data/mock";
 import { formatINR } from "@/lib/utils";
 import { AuthenticityBadge } from "./AuthenticityBadge";
 
 export function ProductCard({ product }: { product: Product }) {
-  const weaver = getWeaver(product.weaverId);
-
   return (
     <Link
       href={`/product/${product.id}`}
@@ -46,9 +43,9 @@ export function ProductCard({ product }: { product: Product }) {
             <p className="text-base font-semibold text-indigo">
               {formatINR(product.price)}
             </p>
-            {weaver && (
-              <p className="text-xs text-muted">by {weaver.name}</p>
-            )}
+            {product.weaverId ? (
+              <p className="text-xs text-muted">by {product.weaverId}</p>
+            ) : null}
           </div>
           <span className="text-xs text-loom">{product.technique}</span>
         </div>

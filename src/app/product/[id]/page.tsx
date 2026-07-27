@@ -9,9 +9,10 @@ import {
   Sparkles,
 } from "lucide-react";
 import { AuthenticityBadge } from "@/components/AuthenticityBadge";
-import { getProduct, getWeaver, type Product } from "@/data/mock";
 import { formatINR } from "@/lib/utils";
 import {
+  type Product,
+  type Weaver,
   getCatalogProduct,
   getSellerWeaver,
   verifyProductBySerial,
@@ -48,6 +49,7 @@ export default async function ProductPage({
   const { id } = await params;
   let product: Product | null = null;
   let passportStatus: "authenticated" | "revoked" | "pending" = "pending";
+  let weaver: Weaver | null = null;
 
   try {
     product = await withApiTimeout(
@@ -55,20 +57,14 @@ export default async function ProductPage({
       "catalog product lookup",
     );
   } catch {
-    product = getProduct(id) ?? null;
+    notFound();
   }
 
   if (!product) notFound();
-  let weaver = getWeaver(product.weaverId);
-
-  try {
-    weaver = await withApiTimeout(
-      getSellerWeaver(product.weaverId),
-      "seller lookup",
-    );
-  } catch {
-    weaver = weaver ?? getWeaver(product.weaverId);
-  }
+  weaver = await withApiTimeout(
+    getSellerWeaver(product.weaverId),
+    "seller lookup",
+  ).catch(() => null);
 
   try {
     const verification = await withApiTimeout(
@@ -175,7 +171,7 @@ export default async function ProductPage({
               type="button"
               className="rounded-full bg-indigo px-5 py-3 text-sm font-medium text-paper"
             >
-              Buy now (demo)
+              Buy now
             </button>
             <Link
               href="/b2b"
@@ -232,8 +228,8 @@ export default async function ProductPage({
                   type="button"
                   className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-indigo"
                 >
-                  <MessageCircle size={14} />
-                  Send a voice note (demo)
+                    <MessageCircle size={14} />
+                  Send a voice note
                 </button>
               </div>
             </section>

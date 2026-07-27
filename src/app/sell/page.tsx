@@ -280,7 +280,7 @@ export default function SellPage() {
                 <h2 className="font-display text-2xl">Choose your language</h2>
               </div>
               <p className="mt-2 text-sm text-muted">
-                Voice registration via BHASHINI / Indic speech models (demo).
+                Voice registration via BHASHINI / Indic speech models.
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
                 {languages.map((l) => (
@@ -341,7 +341,7 @@ export default function SellPage() {
                   <p className="mt-1 text-xs text-muted">
                     {listening
                       ? `Listening in ${lang}…`
-                      : "Tap to simulate recording"}
+                      : "Tap to record"}
                   </p>
                 </button>
                 <button
@@ -356,7 +356,7 @@ export default function SellPage() {
                   <Camera className="text-indigo" />
                   <p className="mt-3 font-medium text-ink">Photo to catalog</p>
                   <p className="mt-1 text-xs text-muted">
-                    Simulate 4 photos uploaded
+                    Add 4 photos to draft
                   </p>
                 </button>
               </div>

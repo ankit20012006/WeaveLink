@@ -5,19 +5,14 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { formatINR } from "@/lib/utils";
 import {
-  DEMO_WEAVER_ID,
   getSellerOrders,
   getSellerProducts,
   getSellerRFQs,
   getSellerStats,
+  type Product,
+  type Order,
   type RFQRecord,
 } from "@/lib/weavelink-api";
-import {
-  orders as fallbackOrders,
-  products as fallbackProducts,
-  type Product,
-  weavers,
-} from "@/data/mock";
 import {
   IndianRupee,
   Package,
@@ -33,46 +28,27 @@ type DashboardData = {
   openOrders: number;
   openRfqs: number;
   products: Product[];
-  orders: typeof fallbackOrders;
+  orders: Order[];
   rfqs: RFQRecord[];
   isApiLive: boolean;
 };
 
-const FALLBACK_WEAVER =
-  weavers.find((weaver) => weaver.id === DEMO_WEAVER_ID) ?? weavers[0];
-
-function getFallbackData(): DashboardData {
-  const products = fallbackProducts.filter(
-    (item) => item.weaverId === FALLBACK_WEAVER.id,
-  );
-  const monthGmv = fallbackOrders.reduce((sum, order) => sum + order.amount, 0);
-  const pendingPayout = fallbackOrders
-    .filter((order) => order.status !== "settled")
-    .reduce((sum, order) => sum + order.amount, 0);
-  const openOrders = fallbackOrders.filter(
-    (order) => order.status !== "settled",
-  ).length;
-
-  return {
-    rfqs: [],
-    orders: fallbackOrders,
-    products,
-    monthGmv,
-    pendingPayout,
-    openOrders,
-    openRfqs: 0,
-    isApiLive: false,
-  };
-}
-
 export default function DashboardPage() {
-  const [state, setState] = useState<DashboardData>(getFallbackData());
+  const [state, setState] = useState<DashboardData>({
+    monthGmv: 0,
+    pendingPayout: 0,
+    openOrders: 0,
+    openRfqs: 0,
+    products: [],
+    orders: [],
+    rfqs: [],
+    isApiLive: false,
+  });
   const [isSyncing, setIsSyncing] = useState(false);
+  const weaverId = "w-lakshmi";
 
   const loadDashboard = useCallback(async () => {
     setIsSyncing(true);
-    const weaverId = FALLBACK_WEAVER.id;
-
     try {
       const [sellerOrders, sellerProducts, stats, sellerRfqs] =
         await Promise.all([
@@ -94,7 +70,14 @@ export default function DashboardPage() {
       });
     } catch {
       setState({
-        ...getFallbackData(),
+        monthGmv: 0,
+        pendingPayout: 0,
+        openOrders: 0,
+        openRfqs: 0,
+        products: [],
+        orders: [],
+        rfqs: [],
+        isApiLive: false,
       });
     } finally {
       setIsSyncing(false);
@@ -105,10 +88,10 @@ export default function DashboardPage() {
     void loadDashboard();
   }, [loadDashboard]);
 
-  const sourceText = state.isApiLive ? "Live API" : "Fallback seed";
+  const sourceText = state.isApiLive ? "Live API" : "API unavailable";
   const sourceTone = state.isApiLive
     ? "border-loom-soft bg-loom-soft text-loom"
-    : "border-lac/35 bg-lac-soft text-lac";
+    : "border-warp-gold/40 bg-warp-gold-soft text-warp-gold";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -118,11 +101,10 @@ export default function DashboardPage() {
             Seller desk
           </p>
           <h1 className="mt-2 font-display text-4xl text-indigo">
-            Namaste, {FALLBACK_WEAVER.name.split(" ")[0]}
+            Namaste
           </h1>
           <p className="mt-2 text-sm text-muted">
-            {FALLBACK_WEAVER.cluster} · Cooperative multi-weaver ready · Demo
-            balances
+            Seller workspace · weaver id: {weaverId}
           </p>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -245,7 +227,7 @@ export default function DashboardPage() {
             </table>
           </div>
           <p className="mt-3 text-xs text-muted">
-            Settlements show transparent fee breakdown to UPI / bank (mocked).
+            Settlement summaries show transparent fee visibility from connected seller records.
             ONDC-ready seller node planned post-selection.
           </p>
         </section>

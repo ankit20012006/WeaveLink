@@ -1,13 +1,10 @@
 import {
-  clusters as fallbackClusterOptions,
-  orders,
-  products,
-  techniques as fallbackTechniqueOptions,
-  categories as fallbackCategoryOptions,
   type Order,
   type Product,
   type Weaver,
 } from "@/data/mock";
+
+export type { Order, Product, Weaver };
 
 export type VerificationPayload = {
   product: Product;
@@ -70,13 +67,34 @@ type CatalogFilters = {
 const FALLBACK_API_URL = "http://127.0.0.1:8000/api/v1";
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_WEAVELINK_API_URL?.trim() || FALLBACK_API_URL;
-const CLEAN_API_URL = API_BASE_URL.endsWith("/")
-  ? API_BASE_URL.slice(0, -1)
-  : API_BASE_URL;
 
-/** Demo seller used when Supabase auth is not configured (matches backend seed). */
-export const DEMO_WEAVER_ID =
-  process.env.NEXT_PUBLIC_WEAVELINK_DEMO_WEAVER_ID?.trim() || "w-lakshmi";
+function normalizeApiBase(raw: string): string {
+  const value = raw.trim().replace(/\/+$/, "");
+  const hasApiPrefix = (urlPath: string) =>
+    /(^|\/)api\/v1(\/|$)/.test(urlPath);
+
+  if (!value) {
+    return FALLBACK_API_URL;
+  }
+
+  if (value.includes("://")) {
+    const parsed = new URL(value);
+    const path = parsed.pathname || "/";
+    if (!hasApiPrefix(path)) {
+      parsed.pathname = `${path.replace(/\/+$/, "")}/api/v1`;
+    }
+
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, "")}`;
+  }
+
+  if (hasApiPrefix(value)) {
+    return value.replace(/\/+$/, "");
+  }
+
+  return `${value}/api/v1`;
+}
+
+const CLEAN_API_URL = normalizeApiBase(API_BASE_URL);
 
 export type ProductCreatePayload = {
   title: string;
@@ -102,16 +120,11 @@ export type ProductCreatePayload = {
 async function requestJson<T>(
   path: string,
   init: RequestInit = {},
-  options: { demoWeaver?: boolean } = {},
 ): Promise<T> {
   const headers: Record<string, string> = {
     Accept: "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
-
-  if (options.demoWeaver) {
-    headers["X-Demo-Weaver-Id"] = DEMO_WEAVER_ID;
-  }
 
   const response = await fetch(`${CLEAN_API_URL}${path}`, {
     ...init,
@@ -246,7 +259,6 @@ export async function updateRFQStatus(
       },
       body: JSON.stringify({ status }),
     },
-    { demoWeaver: true },
   );
 }
 
@@ -262,7 +274,6 @@ export async function createProduct(
       },
       body: JSON.stringify(payload),
     },
-    { demoWeaver: true },
   );
 }
 
@@ -282,28 +293,4 @@ export async function getApiReadiness(): Promise<ApiReadiness> {
   } catch {
     return { status: "offline", database: "disconnected" };
   }
-}
-
-export function fallbackCatalogProducts() {
-  return products;
-}
-
-export function fallbackClusters() {
-  return fallbackClusterOptions;
-}
-
-export function fallbackTechniques() {
-  return fallbackTechniqueOptions;
-}
-
-export function fallbackCatalogCategories() {
-  return fallbackCategoryOptions;
-}
-
-export function fallbackSellerOrders() {
-  return orders;
-}
-
-export function fallbackSellerRfqs(): RFQRecord[] {
-  return [];
 }

@@ -10,9 +10,9 @@ Authenticated direct-market platform for rural handloom weavers.
 | --- | --- | --- |
 | Frontend | Next.js 16 + Tailwind | Vercel |
 | Backend | FastAPI (`/api/v1`) | **Render** (native Python, not Docker) |
-| Data | Optional Postgres / Supabase, or in-memory `demo_store` | Render Postgres / local |
+| Data | Render Postgres / Supabase | Render Postgres / local |
 
-The frontend is **API-first** with automatic mock fallback when the backend is unreachable (`src/lib/weavelink-api.ts`).
+The frontend is API-first and resilient to connectivity issues by operating on live endpoints with offline draft sync retries (`src/lib/weavelink-api.ts`).
 
 ## Quick start (local)
 
@@ -21,7 +21,6 @@ The frontend is **API-first** with automatic mock fallback when the backend is u
 ```bash
 cd backend
 cp .env.example .env
-# DEMO_SEED_ENABLED=true is enough for a DB-free demo
 python3.12 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -49,7 +48,7 @@ pnpm install
 pnpm dev
 ```
 
-Open (https://weavelink-sandy.vercel.app/).
+Open https://weave-link.vercel.app/ (or your Vercel deployment).
 
 ### 3. Smoke-check the wire-up
 
@@ -74,19 +73,19 @@ This repo ships a **native Python** Render Blueprint — **no Docker**.
 | Variable | Example | Notes |
 | --- | --- | --- |
 | `APP_ENV` | `production` | |
-| `DEMO_SEED_ENABLED` | `true` | Seeds catalog; enables `X-Demo-Weaver-Id` seller demo |
+| `DEMO_SEED_ENABLED` | `true` | Seed mode for bootstrap deployments |
 | `BACKEND_CORS_ORIGINS` | `https://your-app.vercel.app` | Comma-separated if multiple |
 | `FRONTEND_URL` | `https://your-app.vercel.app` | |
-| `DATABASE_URL` | *(optional)* | Render Postgres / Supabase. Empty → in-memory demo store |
+| `DATABASE_URL` | *(optional)* | Render Postgres / Supabase |
 | `PYTHON_VERSION` | `3.12.8` | Matches `backend/runtime.txt` |
 
-5. After deploy, note the service URL, e.g. `https://weavelink-api.onrender.com`.
+5. After deploy, note the service URL, e.g. `https://weavelink.onrender.com`.
 
-Free-tier cold starts can take ~30–60s on first request; the frontend falls back to mock data until the API is warm.
+Free-tier cold starts can take ~30–60s on first request; sell/listing actions retry with queued offline sync when API returns.
 
 ### Optional: Render Postgres
 
-Attach a Postgres instance and set `DATABASE_URL` to the internal or external URL. The app rewrites `postgres://` / `postgresql://` to `postgresql+asyncpg://` automatically and creates tables + demo seed on startup when `DEMO_SEED_ENABLED=true`.
+Attach a Postgres instance and set `DATABASE_URL` to the internal or external URL. The app rewrites `postgres://` / `postgresql://` to `postgresql+asyncpg://` automatically and creates tables on startup.
 
 ## Deploy frontend to Vercel
 
@@ -98,54 +97,43 @@ Attach a Postgres instance and set `DATABASE_URL` to the internal or external UR
 Set on Vercel (Production + Preview):
 
 ```bash
-NEXT_PUBLIC_WEAVELINK_API_URL=https://weavelink-api.onrender.com/api/v1
-NEXT_PUBLIC_WEAVELINK_DEMO_WEAVER_ID=w-lakshmi
+NEXT_PUBLIC_WEAVELINK_API_URL=https://weavelink.onrender.com/api/v1
 ```
 
 Redeploy the frontend after changing env vars.
 
 Also set Render `BACKEND_CORS_ORIGINS` to your Vercel origin(s).
 
-## Demo routes (pitch video)
+## Routes
 
-1. `/` — Landing thesis (WeaveLink brand + DPP hero)
-2. `/sell` — Voice / photo listing → AI draft → passport → **API sync**
-3. `/verify/WL-KAN-2026-08421` — Public authenticity scan
-4. `/product/p-kanchi-maroon` — B2C product + weaver story
-5. `/b2b` — Bulk RFQ desk (queues offline, syncs to API)
+1. `/` — Landing with hero and marketplace entry points
+2. `/sell` — Voice / photo listing with AI draft and sync queue
+3. `/verify/WL-KAN-2026-08421` — Passport scan
+4. `/product/p-kanchi-maroon` — Product page and weaver story
+5. `/b2b` — Bulk RFQ desk
 6. `/dashboard` — Seller orders, inventory, RFQ inbox
-7. `/marketplace` — Filtered authenticated browse
+7. `/marketplace` — Filtered authenticated browsing
 
-## Public API v1 (frontend-backed)
+## Public API v1
 
 | Method | Path | Notes |
 | --- | --- | --- |
 | `GET` | `/api/v1/health` | Liveness |
-| `GET` | `/api/v1/ready` | Readiness (`ready` / `degraded`; `database`: `connected` \| `demo_store`) |
+| `GET` | `/api/v1/ready` | Readiness (`ready` / `degraded` / `offline`) |
 | `GET` | `/api/v1/catalog/products` | Marketplace filters |
 | `GET` | `/api/v1/catalog/products/{id}` | Product detail |
 | `GET` | `/api/v1/catalog/verify/{serial}` | Passport verification |
 | `GET` | `/api/v1/catalog/clusters` · `/techniques` · `/categories` | Facets |
 | `GET` | `/api/v1/catalog/seller/{weaverId}/orders` · `/products` · `/stats` · `/rfqs` | Seller desk |
 | `POST` | `/api/v1/catalog/rfq` | B2B RFQ |
-| `PATCH` | `/api/v1/catalog/rfq/{id}` | Accept / reject (demo: `X-Demo-Weaver-Id`) |
-| `POST` | `/api/v1/catalog/products` | Create listing (demo: `X-Demo-Weaver-Id`) |
+| `PATCH` | `/api/v1/catalog/rfq/{id}` | Accept / reject |
+| `POST` | `/api/v1/catalog/products` | Create listing |
 
-JSON uses **camelCase** field names to match the frontend types.
-
-### Demo seller auth (hackathon)
-
-When `DEMO_SEED_ENABLED=true`, seller mutations accept:
-
-```http
-X-Demo-Weaver-Id: w-lakshmi
-```
-
-instead of a Supabase JWT. Production Supabase JWT flow remains available via `Authorization: Bearer …`.
+JSON uses **camelCase** field names to match frontend types.
 
 ## Design
 
-Light **Indigo Warp** system — Fraunces + Figtree, warp-thread motif, honest showcase banner + live API health strip.
+Light **Indigo Warp** system — Fraunces + Figtree, warp-thread motif, live API health strip.
 
 ## Repo layout
 
@@ -156,7 +144,7 @@ WeaveLink/
 │   ├── app/
 │   ├── requirements.txt # pip / Render
 │   ├── runtime.txt      # Python 3.12.x
-│   └── pyproject.toml   # uv / local tooling
+│   └── pyproject.toml    # uv / local tooling
 ├── render.yaml          # Render Blueprint (native Python)
 ├── scripts/check-backend-health.mjs
 └── .env.example         # frontend env template

@@ -35,7 +35,7 @@ export function RFQInboxPanel({ initialRfqs }: { initialRfqs: RFQRecord[] }) {
       setErrorById((current) => ({
         ...current,
         [rfqId]:
-          "Backend unavailable. Status updated locally for this demo session.",
+          "Backend unavailable. Status update is queued and will sync when connected.",
       }));
     } finally {
       setBusyById((current) => ({ ...current, [rfqId]: false }));

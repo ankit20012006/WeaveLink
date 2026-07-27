@@ -13,8 +13,7 @@ import {
 } from "lucide-react";
 import { WarpThreads } from "@/components/WarpThreads";
 import { ProductCard } from "@/components/ProductCard";
-import type { Product } from "@/data/mock";
-import { fallbackCatalogProducts, listCatalogProducts } from "@/lib/weavelink-api";
+import { listCatalogProducts, type Product } from "@/lib/weavelink-api";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 18 },
@@ -33,9 +32,7 @@ const FALLBACK_PRODUCT_COUNT = 3;
 
 export default function HomePage() {
   const mountedRef = useRef(false);
-  const [featured, setFeatured] = useState<Product[]>(
-    fallbackCatalogProducts().slice(0, FALLBACK_PRODUCT_COUNT),
-  );
+  const [featured, setFeatured] = useState<Product[]>([]);
   const [isLive, setIsLive] = useState<boolean | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -62,7 +59,7 @@ export default function HomePage() {
       if (!mountedRef.current) {
         return;
       }
-      setFeatured(fallbackCatalogProducts().slice(0, FALLBACK_PRODUCT_COUNT));
+      setFeatured([]);
       setIsLive(false);
     } finally {
       if (mountedRef.current) {
@@ -78,12 +75,12 @@ export default function HomePage() {
   const sourceText = isLive
     ? "Live API"
     : isLive === false
-      ? "Offline fallback"
+      ? "API unavailable"
       : "Checking API";
   const sourceTone = isLive
     ? "border-loom-soft bg-loom-soft text-loom"
     : isLive === false
-      ? "border-lac/35 bg-lac-soft text-lac"
+      ? "border-warp-gold/40 bg-warp-gold-soft text-warp-gold"
       : "border-warp-gold/40 bg-warp-gold-soft text-warp-gold";
 
   const handleRefresh = () => {
@@ -249,8 +246,8 @@ export default function HomePage() {
           </div>
           {isLive === false ? (
             <p className="mt-3 text-xs text-muted">
-              Showing cached catalog seed data while API availability is being
-              restored.
+              API is currently unavailable. Please retry to refresh the catalog
+              preview.
             </p>
           ) : null}
           {isLoading ? (

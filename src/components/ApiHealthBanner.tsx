@@ -28,13 +28,14 @@ function statusCopy(status: ApiReadinessStatus): {
   if (status === "degraded") {
     return {
       label: "Backend degraded",
-      hint: "API responded with partial issues. Mock fallback remains active for safety.",
+      hint:
+        "API returned partial errors. The app is using whatever endpoints are available and retrying failed calls.",
     };
   }
 
   return {
     label: "Backend offline",
-    hint: "Using local fallback data. Connect backend to restore live behavior.",
+    hint: "Backend is offline; retry with a live endpoint to restore full behavior.",
   };
 }
 

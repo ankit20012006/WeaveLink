@@ -26,7 +26,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Start API (demo store, no Postgres)
+      - name: Start API (seed store, no Postgres)
         working-directory: backend
         env:
           APP_ENV: development

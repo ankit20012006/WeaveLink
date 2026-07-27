@@ -6,10 +6,10 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="font-display text-xl text-indigo">WeaveLink</p>
-          <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
-            Direct market access for genuine handloom — voice-first listing,
-            immutable authenticity, and stories that justify fair price.
-          </p>
+        <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
+          Direct market access for genuine handloom — voice-first listing,
+          immutable authenticity, and stories that justify fair price.
+        </p>
         </div>
         <div className="flex flex-wrap gap-4 text-sm text-muted">
           <Link href="/marketplace" className="hover:text-indigo">
@@ -29,8 +29,7 @@ export function SiteFooter() {
       <div className="border-t border-[var(--line)]">
         <p className="mx-auto max-w-6xl px-4 py-4 text-xs text-muted sm:px-6">
           WeaveLink for Handloom Hackathon 2026 · Market Access &
-          Digital Integration · API-first with mock fallback when backend is
-          unavailable
+          Digital Integration · API-first with resilient fallback support
         </p>
       </div>
     </footer>

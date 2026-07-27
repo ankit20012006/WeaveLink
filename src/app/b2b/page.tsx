@@ -16,11 +16,10 @@ import {
 import { formatINR } from "@/lib/utils";
 import {
   createRFQ,
-  fallbackCatalogProducts,
   listCatalogProducts,
+  type Product,
   type RFQRecord,
 } from "@/lib/weavelink-api";
-import { products as fallbackProducts, type Product } from "@/data/mock";
 
 const TIER_OPTIONS = [
   { minQty: 0, discount: 1, label: "Base unit rate" },
@@ -42,9 +41,8 @@ type SyncLogEntry = {
 };
 
 export default function B2BPage() {
-  const defaultProduct = (fallbackProducts[1] ?? fallbackProducts[0]) as Product;
-  const [products, setProducts] = useState<Product[]>(fallbackCatalogProducts());
-  const [selected, setSelected] = useState<string>(defaultProduct.id);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [selected, setSelected] = useState<string>("");
   const [qty, setQty] = useState(24);
   const [buyer, setBuyer] = useState("Aarohi Design Co.");
   const [notes, setNotes] = useState(
@@ -76,9 +74,12 @@ export default function B2BPage() {
         if (!isMounted) return;
         setProducts(catalogProducts);
         setIsApiEnabled(true);
+        if (catalogProducts[0]?.id) {
+          setSelected(catalogProducts[0].id);
+        }
       } catch {
         if (!isMounted) return;
-        setProducts(fallbackCatalogProducts());
+        setProducts([]);
         setIsApiEnabled(false);
       }
     };
@@ -133,7 +134,7 @@ export default function B2BPage() {
   }, [selectedProduct]);
 
   const minimumReached = useMemo(() => {
-    if (!selectedProduct) return true;
+    if (!selectedProduct) return false;
     return qty >= selectedProduct.moq;
   }, [qty, selectedProduct]);
 
@@ -154,8 +155,11 @@ export default function B2BPage() {
     .find((entry) => qty >= entry.minQty) ?? TIER_OPTIONS[0];
 
   const effectiveUnitPrice = useMemo(
-    () => Math.max(Math.round(selectedProduct.bulkPrice * tier.discount), 1),
-    [selectedProduct.bulkPrice, tier.discount],
+    () =>
+      selectedProduct
+        ? Math.max(Math.round(selectedProduct.bulkPrice * tier.discount), 1)
+        : 0,
+    [selectedProduct?.bulkPrice, tier.discount],
   );
 
   const sampleFee = useMemo(() => (includeSample ? SAMPLE_FEE : 0), [includeSample]);
@@ -249,7 +253,7 @@ export default function B2BPage() {
     setQueuedRfqs(nextQueue);
     setSyncMessage(
       nextQueue.length === 0
-        ? "All queued RFQs synced in demo mode."
+        ? "All queued RFQs synced."
         : `Synced ${synced} RFQ${synced === 1 ? "" : "s"}, ${nextQueue.length} still queued.`,
     );
     addSyncLog(
@@ -328,7 +332,7 @@ export default function B2BPage() {
 
           {!isApiEnabled && (
             <p className="mt-3 rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900">
-              Demo fallback mode: RFQ submit runs locally while API is unreachable.
+              Offline queue mode active. RFQ submit requests will sync when API is reachable.
             </p>
           )}
 
