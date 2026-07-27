@@ -1,11 +1,34 @@
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BadgeCheck, Fingerprint, Link2, Shield } from "lucide-react";
-import { getProductBySerial, getWeaver, products } from "@/data/mock";
+import { BadgeCheck, Fingerprint, Link2, Shield, CircleX } from "lucide-react";
+import { getProductBySerial, getWeaver, type Product, type Weaver } from "@/data/mock";
+import {
+  verifyProductBySerial,
+  type VerificationPayload,
+} from "@/lib/weavelink-api";
 
-export function generateStaticParams() {
-  return products.map((p) => ({ serial: p.serial }));
+export const dynamic = "force-dynamic";
+
+const API_TIMEOUT_MS = 2200;
+
+async function withApiTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`${operation} timed out`)),
+          API_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 export default async function VerifyPage({
@@ -14,9 +37,38 @@ export default async function VerifyPage({
   params: Promise<{ serial: string }>;
 }) {
   const { serial } = await params;
-  const product = getProductBySerial(serial);
+  let payload: VerificationPayload | null = null;
+  let product: Product | null = null;
+  let weaver: Weaver | null = null;
+
+  try {
+    payload = await withApiTimeout(
+      verifyProductBySerial(serial),
+      "passport verification",
+    );
+    product = payload.product;
+    weaver = payload.weaver;
+  } catch {
+    product = getProductBySerial(serial) ?? null;
+    weaver = product ? (getWeaver(product.weaverId) ?? null) : null;
+  }
+
   if (!product) notFound();
-  const weaver = getWeaver(product.weaverId);
+  const anchorHash = payload?.anchorHash ?? "0x7a3f…c91e";
+  const anchorChain = payload?.anchorChain ?? "Polygon-style lightweight anchor";
+  const anchorProvider =
+    payload?.anchorProvider ?? "hybrid registry + on-chain hash";
+  const passportValid = payload?.passportStatus !== "revoked";
+  const statusLabel = payload?.passportStatus ?? "valid";
+  const statusText = passportValid
+    ? "This piece is authentic"
+    : "This piece has a verification issue";
+  const statusTone = passportValid
+    ? "text-loom"
+    : "text-lac";
+  const statusNote = passportValid
+    ? "Immutable Digital Product Passport · no spoofable redirect"
+    : "This passport status is currently flagged for review";
 
   return (
     <div className="hero-wash grain min-h-[70vh]">
@@ -31,12 +83,10 @@ export default async function VerifyPage({
           <p className="mt-5 text-[11px] uppercase tracking-[0.22em] text-loom">
             Public verification
           </p>
-          <h1 className="mt-2 font-display text-3xl text-indigo sm:text-4xl">
-            This piece is authentic
+          <h1 className={`mt-2 font-display text-3xl sm:text-4xl ${statusTone}`}>
+            {statusText}
           </h1>
-          <p className="mt-2 text-sm text-muted">
-            Immutable Digital Product Passport · no spoofable redirect
-          </p>
+          <p className="mt-2 text-sm text-muted">{statusNote}</p>
         </div>
 
         <article className="mt-10 overflow-hidden rounded-[1.75rem] border border-[var(--line)] bg-paper shadow-[var(--shadow)]">
@@ -60,9 +110,19 @@ export default async function VerifyPage({
                   {product.title}
                 </h2>
               </div>
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-loom-soft px-3 py-1.5 text-xs font-medium text-loom">
-                <BadgeCheck size={14} />
-                Passport valid
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${
+                  passportValid
+                    ? "bg-loom-soft text-loom"
+                    : "bg-amber-100 text-amber-900"
+                }`}
+              >
+                {passportValid ? (
+                  <BadgeCheck size={14} />
+                ) : (
+                  <CircleX size={14} />
+                )}
+                {statusLabel === "revoked" ? "Passport revoked" : "Passport valid"}
               </span>
             </div>
 
@@ -92,8 +152,7 @@ export default async function VerifyPage({
                     Anchored integrity hash (demo)
                   </p>
                   <p className="mt-1 break-all font-mono text-xs text-muted">
-                    0x7a3f…c91e · Polygon-style lightweight anchor · registry +
-                    on-chain hash hybrid
+                    {anchorHash} · {anchorChain} · {anchorProvider}
                   </p>
                 </div>
               </div>

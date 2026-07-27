@@ -1,0 +1,50 @@
+[project]
+name = "weavelink-api"
+version = "0.1.0"
+description = "WeaveLink FastAPI backend"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115,<1.0",
+    "pydantic>=2.10,<3.0",
+    "pydantic-settings>=2.7,<3.0",
+    "sqlalchemy[asyncio]>=2.0,<2.1",
+    "asyncpg>=0.30,<0.31",
+    "alembic>=1.14,<2.0",
+    "typing_extensions>=4.12,<5.0",
+    "python-jose>=3.3,<4.0",
+    "httpx>=0.28,<1.0",
+    "python-multipart>=0.0.9,<1",
+    "uvicorn[standard]>=0.32,<1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3,<9.0",
+    "pytest-asyncio>=0.25,<1",
+    "ruff>=0.8,<1",
+    "mypy>=1.14,<2",
+    "types-requests>=2.32,<3",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["app", "tests"]
+extend-exclude = [
+    ".venv",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+fixable = ["I"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_configs = true
+ignore_missing_imports = true
+files = ["app"]
+
+[project.scripts]
+weavelink-api = "app.main:main"

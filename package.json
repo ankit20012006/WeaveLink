@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "health:api": "node scripts/check-backend-health.mjs",
+    "pre-pr": "pnpm run health:api"
   },
   "dependencies": {
     "clsx": "^2.1.1",

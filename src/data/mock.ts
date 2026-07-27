@@ -311,3 +311,11 @@ export const techniques = [
   "Extra-weft brocade",
   "Plain weave with border",
 ] as const;
+
+export const categories = [
+  "All categories",
+  "Saree",
+  "Stole",
+  "Home",
+  "Dupatta",
+] as const;

@@ -3,6 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { motion } from "framer-motion";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Mic,
   QrCode,
@@ -12,7 +13,8 @@ import {
 } from "lucide-react";
 import { WarpThreads } from "@/components/WarpThreads";
 import { ProductCard } from "@/components/ProductCard";
-import { products } from "@/data/mock";
+import type { Product } from "@/data/mock";
+import { fallbackCatalogProducts, listCatalogProducts } from "@/lib/weavelink-api";
 
 const fadeUp = {
   hidden: { opacity: 0, y: 18 },
@@ -27,8 +29,66 @@ const fadeUp = {
   }),
 };
 
+const FALLBACK_PRODUCT_COUNT = 3;
+
 export default function HomePage() {
-  const featured = products.slice(0, 3);
+  const mountedRef = useRef(false);
+  const [featured, setFeatured] = useState<Product[]>(
+    fallbackCatalogProducts().slice(0, FALLBACK_PRODUCT_COUNT),
+  );
+  const [isLive, setIsLive] = useState<boolean | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadFeatured = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const catalogProducts = await listCatalogProducts({
+        sortBy: "featured",
+      });
+
+      if (!mountedRef.current) {
+        return;
+      }
+      setFeatured(catalogProducts.slice(0, FALLBACK_PRODUCT_COUNT));
+      setIsLive(true);
+    } catch {
+      if (!mountedRef.current) {
+        return;
+      }
+      setFeatured(fallbackCatalogProducts().slice(0, FALLBACK_PRODUCT_COUNT));
+      setIsLive(false);
+    } finally {
+      if (mountedRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadFeatured();
+  }, [loadFeatured]);
+
+  const sourceText = isLive
+    ? "Live API"
+    : isLive === false
+      ? "Offline fallback"
+      : "Checking API";
+  const sourceTone = isLive
+    ? "border-loom-soft bg-loom-soft text-loom"
+    : isLive === false
+      ? "border-lac/35 bg-lac-soft text-lac"
+      : "border-warp-gold/40 bg-warp-gold-soft text-warp-gold";
+
+  const handleRefresh = () => {
+    void loadFeatured();
+  };
 
   return (
     <>
@@ -160,18 +220,42 @@ export default function HomePage() {
                 Authenticated pieces, ready to show
               </h2>
             </div>
-            <Link
-              href="/marketplace"
-              className="text-sm font-medium text-indigo hover:underline"
-            >
-              View all →
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <span
+                className={`inline-flex items-center rounded-full px-3 py-1 text-xs ${sourceTone}`}
+              >
+                {sourceText}
+              </span>
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="inline-flex items-center rounded-full border border-[var(--line)] bg-paper px-3 py-1.5 text-xs font-medium text-indigo transition hover:border-indigo"
+                disabled={isLoading}
+              >
+                Retry API fetch
+              </button>
+              <Link
+                href="/marketplace"
+                className="text-sm font-medium text-indigo hover:underline"
+              >
+                View all →
+              </Link>
+            </div>
           </div>
           <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {featured.map((p) => (
               <ProductCard key={p.id} product={p} />
             ))}
           </div>
+          {isLive === false ? (
+            <p className="mt-3 text-xs text-muted">
+              Showing cached catalog seed data while API availability is being
+              restored.
+            </p>
+          ) : null}
+          {isLoading ? (
+            <p className="mt-3 text-xs text-muted">Loading live catalog...</p>
+          ) : null}
         </div>
       </section>
 

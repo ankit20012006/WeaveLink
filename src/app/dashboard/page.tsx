@@ -1,26 +1,114 @@
+"use client";
+
+import { RefreshCw } from "lucide-react";
 import Link from "next/link";
-import { orders, products, weavers } from "@/data/mock";
+import { useCallback, useEffect, useState } from "react";
 import { formatINR } from "@/lib/utils";
+import {
+  DEMO_WEAVER_ID,
+  getSellerOrders,
+  getSellerProducts,
+  getSellerRFQs,
+  getSellerStats,
+  type RFQRecord,
+} from "@/lib/weavelink-api";
+import {
+  orders as fallbackOrders,
+  products as fallbackProducts,
+  type Product,
+  weavers,
+} from "@/data/mock";
 import {
   IndianRupee,
   Package,
   ShoppingBag,
+  Tag,
   TrendingUp,
 } from "lucide-react";
+import { RFQInboxPanel } from "@/components/RFQInboxPanel";
 
-const statusStyles = {
-  pending: "bg-warp-gold-soft text-ink",
-  shipped: "bg-indigo-soft text-indigo-mid",
-  settled: "bg-loom-soft text-loom",
-} as const;
+type DashboardData = {
+  monthGmv: number;
+  pendingPayout: number;
+  openOrders: number;
+  openRfqs: number;
+  products: Product[];
+  orders: typeof fallbackOrders;
+  rfqs: RFQRecord[];
+  isApiLive: boolean;
+};
+
+const FALLBACK_WEAVER =
+  weavers.find((weaver) => weaver.id === DEMO_WEAVER_ID) ?? weavers[0];
+
+function getFallbackData(): DashboardData {
+  const products = fallbackProducts.filter(
+    (item) => item.weaverId === FALLBACK_WEAVER.id,
+  );
+  const monthGmv = fallbackOrders.reduce((sum, order) => sum + order.amount, 0);
+  const pendingPayout = fallbackOrders
+    .filter((order) => order.status !== "settled")
+    .reduce((sum, order) => sum + order.amount, 0);
+  const openOrders = fallbackOrders.filter(
+    (order) => order.status !== "settled",
+  ).length;
+
+  return {
+    rfqs: [],
+    orders: fallbackOrders,
+    products,
+    monthGmv,
+    pendingPayout,
+    openOrders,
+    openRfqs: 0,
+    isApiLive: false,
+  };
+}
 
 export default function DashboardPage() {
-  const weaver = weavers[0];
-  const inventory = products.filter((p) => p.weaverId === weaver.id);
-  const pendingPayout = orders
-    .filter((o) => o.status !== "settled")
-    .reduce((sum, o) => sum + o.amount, 0);
-  const monthGmv = orders.reduce((sum, o) => sum + o.amount, 0);
+  const [state, setState] = useState<DashboardData>(getFallbackData());
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const loadDashboard = useCallback(async () => {
+    setIsSyncing(true);
+    const weaverId = FALLBACK_WEAVER.id;
+
+    try {
+      const [sellerOrders, sellerProducts, stats, sellerRfqs] =
+        await Promise.all([
+          getSellerOrders(weaverId),
+          getSellerProducts(weaverId),
+          getSellerStats(weaverId),
+          getSellerRFQs(weaverId),
+        ]);
+
+      setState({
+        orders: sellerOrders,
+        products: sellerProducts,
+        monthGmv: stats.monthGmv,
+        pendingPayout: stats.pendingSettlement,
+        openOrders: stats.openOrders,
+        openRfqs: sellerRfqs.filter((rfq) => rfq.status === "submitted").length,
+        rfqs: sellerRfqs,
+        isApiLive: true,
+      });
+    } catch {
+      setState({
+        ...getFallbackData(),
+      });
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadDashboard();
+  }, [loadDashboard]);
+
+  const sourceText = state.isApiLive ? "Live API" : "Fallback seed";
+  const sourceTone = state.isApiLive
+    ? "border-loom-soft bg-loom-soft text-loom"
+    : "border-lac/35 bg-lac-soft text-lac";
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
@@ -30,41 +118,68 @@ export default function DashboardPage() {
             Seller desk
           </p>
           <h1 className="mt-2 font-display text-4xl text-indigo">
-            Namaste, {weaver.name.split(" ")[0]}
+            Namaste, {FALLBACK_WEAVER.name.split(" ")[0]}
           </h1>
           <p className="mt-2 text-sm text-muted">
-            {weaver.cluster} · Cooperative multi-weaver ready · Demo balances
+            {FALLBACK_WEAVER.cluster} · Cooperative multi-weaver ready · Demo
+            balances
           </p>
         </div>
-        <Link
-          href="/sell"
-          className="rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
+        <div className="flex flex-wrap gap-3">
+          <button
+            type="button"
+            onClick={() => void loadDashboard()}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1.5 rounded-full border border-[var(--line)] bg-paper px-4 py-2 text-sm font-medium text-indigo transition hover:border-indigo disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+            {isSyncing ? "Syncing..." : "Sync dashboard"}
+          </button>
+          <Link
+            href="/sell"
+            className="rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
+          >
+            New listing
+          </Link>
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <span
+          className={`inline-flex items-center rounded-full px-3 py-1 text-xs ${sourceTone}`}
         >
-          New listing
-        </Link>
+          {sourceText}
+        </span>
+        {isSyncing ? (
+          <p className="text-xs text-muted">Refreshing dashboard data from API…</p>
+        ) : null}
       </div>
 
-      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[
           {
             label: "This month GMV",
-            value: formatINR(monthGmv),
+            value: formatINR(state.monthGmv),
             icon: TrendingUp,
           },
           {
             label: "Pending settlement",
-            value: formatINR(pendingPayout),
+            value: formatINR(state.pendingPayout),
             icon: IndianRupee,
           },
           {
             label: "Open orders",
-            value: String(orders.filter((o) => o.status !== "settled").length),
+            value: String(state.openOrders),
             icon: ShoppingBag,
           },
           {
             label: "Active SKUs",
-            value: String(inventory.length),
+            value: String(state.products.length),
             icon: Package,
+          },
+          {
+            label: "Open RFQs",
+            value: String(state.openRfqs),
+            icon: Tag,
           },
         ].map((stat) => (
           <div
@@ -96,7 +211,7 @@ export default function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {orders.map((order) => (
+                {state.orders.map((order) => (
                   <tr
                     key={order.id}
                     className="border-b border-[var(--line)] last:border-0"
@@ -119,7 +234,7 @@ export default function DashboardPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span
-                        className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${statusStyles[order.status]}`}
+                        className={`rounded-full px-2.5 py-1 text-xs font-medium capitalize ${orderStatusStyles[order.status]}`}
                       >
                         {order.status}
                       </span>
@@ -136,9 +251,12 @@ export default function DashboardPage() {
         </section>
 
         <section>
-          <h2 className="font-display text-2xl text-indigo">Inventory</h2>
+          <h2 className="font-display text-2xl text-indigo">RFQ inbox</h2>
+          <RFQInboxPanel initialRfqs={state.rfqs} />
+
+          <h2 className="mt-6 font-display text-2xl text-indigo">Inventory</h2>
           <ul className="mt-4 space-y-3">
-            {inventory.map((item) => (
+            {state.products.map((item) => (
               <li
                 key={item.id}
                 className="rounded-2xl border border-[var(--line)] bg-paper p-4"
@@ -191,3 +309,9 @@ function StatusPill({
     </span>
   );
 }
+
+const orderStatusStyles = {
+  pending: "bg-warp-gold-soft text-ink",
+  shipped: "bg-indigo-soft text-indigo-mid",
+  settled: "bg-loom-soft text-loom",
+} as const;

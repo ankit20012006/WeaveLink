@@ -28,8 +28,9 @@ export function SiteFooter() {
       </div>
       <div className="border-t border-[var(--line)]">
         <p className="mx-auto max-w-6xl px-4 py-4 text-xs text-muted sm:px-6">
-          Demo frontend for Handloom Hackathon 2026 · Theme 2 — Market Access &
-          Digital Integration · Product data is mocked for the pitch video
+          WeaveLink for Handloom Hackathon 2026 · Market Access &
+          Digital Integration · API-first with mock fallback when backend is
+          unavailable
         </p>
       </div>
     </footer>

@@ -9,11 +9,35 @@ import {
   Sparkles,
 } from "lucide-react";
 import { AuthenticityBadge } from "@/components/AuthenticityBadge";
-import { getProduct, getWeaver, products } from "@/data/mock";
+import { getProduct, getWeaver, type Product } from "@/data/mock";
 import { formatINR } from "@/lib/utils";
+import {
+  getCatalogProduct,
+  getSellerWeaver,
+  verifyProductBySerial,
+} from "@/lib/weavelink-api";
 
-export function generateStaticParams() {
-  return products.map((p) => ({ id: p.id }));
+export const dynamic = "force-dynamic";
+
+const API_TIMEOUT_MS = 2200;
+
+async function withApiTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(
+          () => reject(new Error(`${operation} timed out`)),
+          API_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle) {
+      clearTimeout(timeoutHandle);
+    }
+  }
 }
 
 export default async function ProductPage({
@@ -22,9 +46,39 @@ export default async function ProductPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const product = getProduct(id);
+  let product: Product | null = null;
+  let passportStatus: "authenticated" | "revoked" | "pending" = "pending";
+
+  try {
+    product = await withApiTimeout(
+      getCatalogProduct(id),
+      "catalog product lookup",
+    );
+  } catch {
+    product = getProduct(id) ?? null;
+  }
+
   if (!product) notFound();
-  const weaver = getWeaver(product.weaverId);
+  let weaver = getWeaver(product.weaverId);
+
+  try {
+    weaver = await withApiTimeout(
+      getSellerWeaver(product.weaverId),
+      "seller lookup",
+    );
+  } catch {
+    weaver = weaver ?? getWeaver(product.weaverId);
+  }
+
+  try {
+    const verification = await withApiTimeout(
+      verifyProductBySerial(product.serial),
+      "passport verification",
+    );
+    passportStatus = verification.passportStatus === "valid" ? "authenticated" : "revoked";
+  } catch {
+    passportStatus = product.authenticated ? "authenticated" : "pending";
+  }
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-8 sm:px-6">
@@ -62,7 +116,14 @@ export default async function ProductPage({
         </div>
 
         <div>
-          <AuthenticityBadge />
+          <AuthenticityBadge
+            status={passportStatus}
+          />
+          {passportStatus !== "authenticated" ? (
+            <p className="mt-2 text-sm text-lac">
+              This listing shows a {passportStatus === "revoked" ? "revoked" : "pending"} passport status.
+            </p>
+          ) : null}
           <p className="mt-4 text-[11px] uppercase tracking-[0.18em] text-muted">
             {product.cluster}
             {product.gi ? ` · GI ${product.gi}` : ""}

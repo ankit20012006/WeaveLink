@@ -1,0 +1,49 @@
+# WeaveLink API on Render — native Python (no Docker).
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After deploy:
+# 1. Copy the service URL (e.g. https://weavelink-api.onrender.com)
+# 2. Set Vercel env NEXT_PUBLIC_WEAVELINK_API_URL=https://…/api/v1
+# 3. Set BACKEND_CORS_ORIGINS to your Vercel frontend origin(s)
+
+services:
+  - type: web
+    name: weavelink-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.8"
+      - key: APP_ENV
+        value: production
+      - key: APP_NAME
+        value: WeaveLink API
+      - key: API_V1_PREFIX
+        value: /api/v1
+      - key: DEMO_SEED_ENABLED
+        value: "true"
+      - key: INTEGRITY_ANCHOR_PROVIDER
+        value: database_only
+      - key: LOG_LEVEL
+        value: INFO
+      # Comma-separated browser origins allowed to call the API.
+      - key: BACKEND_CORS_ORIGINS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      # Optional: Render Postgres / Supabase async-compatible URL.
+      # Leave empty to run with in-memory demo_store (catalog + RFQ still work).
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_DIRECT
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_JWT_ISSUER
+        sync: false
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated

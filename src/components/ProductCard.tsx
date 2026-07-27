@@ -22,7 +22,10 @@ export function ProductCard({ product }: { product: Product }) {
           sizes="(max-width:768px) 100vw, 33vw"
         />
         <div className="absolute left-3 top-3">
-          <AuthenticityBadge compact />
+          <AuthenticityBadge
+            compact
+            status={product.authenticated ? "authenticated" : "revoked"}
+          />
         </div>
         {product.status === "in-production" && (
           <span className="absolute right-3 top-3 rounded-full bg-paper/95 px-2 py-0.5 text-[11px] text-muted">

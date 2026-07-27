@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: weavelink
+      POSTGRES_USER: weavelink
+      POSTGRES_PASSWORD: weavelink
+    ports:
+      - "5433:5432"
+    volumes:
+      - weavelink_pg:/var/lib/postgresql/data
+
+  api:
+    build: .
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql+asyncpg://weavelink:weavelink@db:5432/weavelink
+      DATABASE_URL_DIRECT: postgresql+asyncpg://weavelink:weavelink@db:5432/weavelink
+      BACKEND_CORS_ORIGINS: http://localhost:3000
+      FRONTEND_URL: http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      - db
+    command: ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+volumes:
+  weavelink_pg:
+
