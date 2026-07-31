@@ -28,7 +28,5 @@ class AuthRoleList(BaseModel):
 
 class AuthProfilePatch(BaseModel):
     display_name: str | None = None
-    weaver_id: str | None = None
-    email: str | None = None
-    role: str | None = None
-    verified: bool | None = None
+
+    model_config = ConfigDict(extra="forbid")

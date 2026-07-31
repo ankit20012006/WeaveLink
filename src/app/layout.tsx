@@ -3,6 +3,7 @@ import { Figtree, Fraunces } from "next/font/google";
 import { BackendStatusBanner } from "@/components/BackendStatusBanner";
 import { SiteFooter } from "@/components/SiteFooter";
 import { SiteHeader } from "@/components/SiteHeader";
+import { LanguageProvider } from "@/lib/language";
 import "./globals.css";
 
 const figtree = Figtree({
@@ -37,10 +38,12 @@ export default function RootLayout({
       className={`${figtree.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col bg-mist text-ink">
-        <BackendStatusBanner />
-        <SiteHeader />
-        <main className="flex-1">{children}</main>
-        <SiteFooter />
+        <LanguageProvider>
+          <BackendStatusBanner />
+          <SiteHeader />
+          <main className="flex-1">{children}</main>
+          <SiteFooter />
+        </LanguageProvider>
       </body>
     </html>
   );

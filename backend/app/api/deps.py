@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import Depends, Header, HTTPException, Request, status
-
 from app.core import security
 from app.core.config import settings
+from app.db.session import get_db
+from app.services.auth_db import get_user_profile
+from fastapi import Depends, Header, HTTPException, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 AuthUser = dict[str, object]
 
@@ -38,6 +40,7 @@ def _demo_weaver_user(weaver_id: str) -> AuthUser:
         "app_metadata": {
             "weaver_id": cleaned,
             "roles": ["weaver"],
+            "verified": True,
         },
         "user_metadata": {
             "weaver_id": cleaned,
@@ -170,15 +173,35 @@ def require_role(*roles: str) -> Callable[[AuthUser], AuthUser]:
     return _resolver
 
 
-def require_verified_weaver(
+async def require_verified_weaver(
     user: AuthUser = Depends(require_auth),
+    db: AsyncSession | None = Depends(get_db),
 ) -> AuthUser:
     roles = _collect_roles(user)
-    # Demo weaver header already injects role=weaver when DEMO_SEED_ENABLED.
-    if "weaver" not in roles and "seller" not in roles and "admin" not in roles:
+    if "admin" in roles:
+        return user
+
+    user_id = user.get("sub")
+    profile = (
+        await get_user_profile(db, user_id)
+        if db is not None and isinstance(user_id, str)
+        else None
+    )
+    profile_is_verified_weaver = bool(
+        profile
+        and profile.verified
+        and profile.role.strip().lower() in {"weaver", "seller"},
+    )
+    app_metadata = user.get("app_metadata")
+    claim_is_verified = bool(
+        isinstance(app_metadata, dict)
+        and app_metadata.get("verified") is True
+        and ({"weaver", "seller"} & roles),
+    )
+    if not profile_is_verified_weaver and not claim_is_verified:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only weaver/admin accounts can perform seller actions",
+            detail="A verified weaver profile is required",
         )
     return user
 

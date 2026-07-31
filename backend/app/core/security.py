@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
-from jose import JWTError, jwt
-
 from app.core.config import settings
-
+from jose import JWTError, jwt
 
 _JWKS_CACHE_TTL_SECONDS = 300
 _JWKS_CACHE_KEYS: list[dict[str, Any]] = []
@@ -37,6 +35,12 @@ def _candidate_jwks_urls() -> list[str]:
     if configured:
         values.append(configured)
     if settings.supabase_url:
+        standard = (
+            f"{settings.supabase_url.rstrip('/')}/auth/v1/"
+            ".well-known/jwks.json"
+        )
+        if standard not in values:
+            values.append(standard)
         alt = f"{settings.supabase_url.rstrip('/')}/auth/v1/keys"
         if alt not in values:
             values.append(alt)
@@ -58,7 +62,12 @@ def _refresh_jwks() -> list[dict[str, Any]]:
     keys: list[dict[str, Any]] = []
     for jwks_url in candidates:
         try:
-            response = httpx.get(jwks_url, timeout=4.0)
+            headers = (
+                {"apikey": settings.supabase_publishable_key}
+                if settings.supabase_publishable_key
+                else {}
+            )
+            response = httpx.get(jwks_url, headers=headers, timeout=4.0)
             response.raise_for_status()
             payload = response.json()
             candidate_keys = payload.get("keys") if isinstance(payload, dict) else None

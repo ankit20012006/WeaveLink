@@ -26,6 +26,20 @@ export type Product = {
   gi?: string;
   status: InventoryStatus;
   authenticated: boolean;
+  claimStatus?:
+    | "draft"
+    | "self_declared"
+    | "evidence_submitted"
+    | "cooperative_verified"
+    | "gi_authority_verified"
+    | "revoked";
+  claimIssuer?: string | null;
+  claimIssuerRole?: string | null;
+  evidenceUrl?: string | null;
+  originalAudioUrl?: string | null;
+  verificationMethod?: string | null;
+  verifiedAt?: string | null;
+  claimExpiresAt?: string | null;
   serial: string;
   weaverId: string;
   images: string[];

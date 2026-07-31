@@ -4,13 +4,13 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.schemas.catalog import (
+    RFQ,
     DashboardOrder,
     DashboardStats,
     Product,
     ProductCreatePayload,
-    RFQ,
-    RFQStatus,
     RFQCreatePayload,
+    RFQStatus,
     VerificationPayload,
     Weaver,
 )
@@ -25,7 +25,10 @@ _weavers: list[Weaver] = [
         verified=True,
         photo="https://images.unsplash.com/photo-1594744803329-e58b31de8bf5?w=400&q=80",
         years=28,
-        bio="Third-generation silk weaver. Works a pit loom with her sister in a two-loom shed behind their home.",
+        bio=(
+            "Third-generation silk weaver. Works a pit loom with her sister "
+            "in a two-loom shed behind their home."
+        ),
     ),
     Weaver(
         id="w-ramesh",
@@ -36,7 +39,10 @@ _weavers: list[Weaver] = [
         verified=True,
         photo="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&q=80",
         years=19,
-        bio="Bandha master known for natural indigo resists. Sells with a 12-member SHG cooperative.",
+        bio=(
+            "Bandha master known for natural indigo resists. "
+            "Sells with a 12-member SHG cooperative."
+        ),
     ),
     Weaver(
         id="w-meena",
@@ -409,15 +415,15 @@ def get_verification(serial: str) -> VerificationPayload | None:
     if weaver is None:
         return None
 
-    is_revoked = product.serial.endswith("03155")
-
     return VerificationPayload(
         product=product,
         weaver=weaver,
-        passport_status="revoked" if is_revoked else "valid",
-        anchor_hash="0x7a3f…c91e",
-        anchor_chain="Polygon-style lightweight anchor",
-        anchor_provider="hybrid registry + on-chain hash",
+        passport_status=(
+            "revoked" if product.claim_status == "revoked" else "valid"
+        ),
+        anchor_hash="not-minted",
+        anchor_chain="Not anchored",
+        anchor_provider="database record only",
     )
 
 

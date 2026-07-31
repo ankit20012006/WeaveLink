@@ -17,6 +17,7 @@ scripts
 # next.js
 /.next/
 /out/
+/docs/
 
 # production
 /build
@@ -24,6 +25,7 @@ scripts
 # misc
 .DS_Store
 *.pem
+issue.md
 
 # debug
 npm-debug.log*
@@ -40,3 +42,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+.demo-credentials

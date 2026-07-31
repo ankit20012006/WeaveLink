@@ -20,7 +20,7 @@ export default function MarketplacePage() {
   const [cluster, setCluster] = useState("All clusters");
   const [technique, setTechnique] = useState("All techniques");
   const [category, setCategory] = useState("All categories");
-  const [authOnly, setAuthOnly] = useState(true);
+  const [authOnly, setAuthOnly] = useState(false);
   const [sortBy, setSortBy] = useState<
     "featured" | "priceLowToHigh" | "priceHighToLow" | "nameAsc"
   >("featured");
@@ -66,33 +66,90 @@ export default function MarketplacePage() {
 
   const loadCatalog = useCallback(async () => {
     setIsCatalogLoading(true);
+    setCatalogError(null);
     const minPrice = Number.parseInt(minPriceInput, 10);
     const maxPrice = Number.parseInt(maxPriceInput, 10);
 
+    const requestCatalogProducts = listCatalogProducts({
+      search: query.trim(),
+      cluster,
+      technique,
+      category,
+      authenticatedOnly: authOnly,
+      sortBy,
+      minPrice: Number.isNaN(minPrice) ? null : minPrice,
+      maxPrice: Number.isNaN(maxPrice) ? null : maxPrice,
+    });
+
+    const requestClusters = listClusters();
+    const requestTechniques = listTechniques();
+    const requestCategories = listCatalogCategories();
+
     try {
-      const [catalogProducts, catalogClusters, catalogTechniques, catalogCategories] =
-        await Promise.all([
-          listCatalogProducts({
-            search: query.trim(),
-            cluster,
-            technique,
-            category,
-            authenticatedOnly: authOnly,
-            sortBy,
-            minPrice: Number.isNaN(minPrice) ? null : minPrice,
-            maxPrice: Number.isNaN(maxPrice) ? null : maxPrice,
-          }),
-          listClusters(),
-          listTechniques(),
-          listCatalogCategories(),
+      const [catalogProductsResult, clustersResult, techniquesResult, categoriesResult] =
+        await Promise.allSettled([
+          requestCatalogProducts,
+          requestClusters,
+          requestTechniques,
+          requestCategories,
         ]);
 
+      const catalogProducts = catalogProductsResult.status === "fulfilled"
+        ? catalogProductsResult.value
+        : [];
+      const catalogClusters = clustersResult.status === "fulfilled"
+        ? clustersResult.value
+        : [];
+      const catalogTechniques = techniquesResult.status === "fulfilled"
+        ? techniquesResult.value
+        : [];
+      const catalogCategories = categoriesResult.status === "fulfilled"
+        ? categoriesResult.value
+        : [];
+
+      const failures = [
+        catalogProductsResult,
+        clustersResult,
+        techniquesResult,
+        categoriesResult,
+      ].filter((result) => result.status === "rejected");
+
+      const hasPartialData = failures.length > 0 && catalogProductsResult.status === "fulfilled";
+      const noCatalog = catalogProductsResult.status === "rejected";
+
       setProducts(catalogProducts);
-      setClusters([BASE_FILTER_OPTIONS[0], ...catalogClusters]);
-      setTechniques([BASE_FILTER_OPTIONS[1], ...catalogTechniques]);
-      setCategories([BASE_FILTER_OPTIONS[2], ...catalogCategories]);
-      setIsApiEnabled(true);
-      setCatalogError(null);
+      setClusters(
+        catalogClusters.length === 0
+          ? [BASE_FILTER_OPTIONS[0]]
+          : [BASE_FILTER_OPTIONS[0], ...catalogClusters],
+      );
+      setTechniques(
+        catalogTechniques.length === 0
+          ? [BASE_FILTER_OPTIONS[1]]
+          : [BASE_FILTER_OPTIONS[1], ...catalogTechniques],
+      );
+      setCategories(
+        catalogCategories.length === 0
+          ? [BASE_FILTER_OPTIONS[2]]
+          : [BASE_FILTER_OPTIONS[2], ...catalogCategories],
+      );
+
+      if (noCatalog) {
+        setIsApiEnabled(false);
+        setCatalogError(FALLBACK_TEXT);
+      } else if (hasPartialData) {
+        setIsApiEnabled(true);
+        setCatalogError("Catalog loaded with partial API data. Sync again if some sections fail.");
+      } else {
+        setIsApiEnabled(true);
+        setCatalogError(null);
+      }
+
+      if (!hasPartialData && noCatalog) {
+        setClusters([BASE_FILTER_OPTIONS[0]]);
+        setTechniques([BASE_FILTER_OPTIONS[1]]);
+        setCategories([BASE_FILTER_OPTIONS[2]]);
+      }
       return;
     } catch {
       setProducts([]);

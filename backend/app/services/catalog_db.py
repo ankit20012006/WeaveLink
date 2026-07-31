@@ -7,22 +7,29 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Order, Product, RFQ, Weaver
+from app.db.models import RFQ, Order, Product, Weaver
+from app.schemas.catalog import (
+    RFQ as RFQSchema,
+)
 from app.schemas.catalog import (
     DashboardOrder,
     DashboardStats,
     OrderCreatePayload,
     OrderStatus,
-    Product as ProductSchema,
     ProductCreatePayload,
     ProductPatchPayload,
-    RFQ as RFQSchema,
     RFQCreatePayload,
     RFQStatus,
     VerificationPayload,
+)
+from app.schemas.catalog import (
+    Product as ProductSchema,
+)
+from app.schemas.catalog import (
     Weaver as WeaverSchema,
 )
 from app.services import demo_store
+from app.services.passport_chain import get_product_passport, product_record_hash
 
 DBSortBy = Literal["featured", "price_low_to_high", "price_high_to_low", "name_asc"]
 _PRODUCT_STATUS_TRANSITIONS: dict[str, set[str]] = {
@@ -52,6 +59,14 @@ def _to_product_schema(product: Product) -> ProductSchema:
         gi=product.gi,
         status=product.status,
         authenticated=product.authenticated,
+        claimStatus=product.claim_status,
+        claimIssuer=product.claim_issuer,
+        claimIssuerRole=product.claim_issuer_role,
+        evidenceUrl=product.evidence_url,
+        originalAudioUrl=product.original_audio_url,
+        verificationMethod=product.verification_method,
+        verifiedAt=product.verified_at,
+        claimExpiresAt=product.claim_expires_at,
         serial=product.serial,
         weaverId=product.weaver_id,
         images=list(product.images or []),
@@ -97,8 +112,19 @@ def _to_rfq_schema(rfq: RFQ) -> RFQSchema:
         buyer=rfq.buyer,
         quantity=rfq.quantity,
         notes=rfq.notes,
+        contactEmail=rfq.contact_email,
+        deliveryPincode=rfq.delivery_pincode,
+        requiredBy=rfq.required_by,
+        sampleRequired=rfq.sample_required,
+        acceptsHandmadeVariation=rfq.accepts_handmade_variation,
+        targetBudget=rfq.target_budget,
         estimatedTotal=rfq.estimated_total,
         status=rfq.status,
+        quotedUnitPrice=rfq.quoted_unit_price,
+        productionLeadDays=rfq.production_lead_days,
+        expectedArtisanPayout=rfq.expected_artisan_payout,
+        sellerNotes=rfq.seller_notes,
+        quoteValidUntil=rfq.quote_valid_until,
         createdAt=rfq.created_at,
     )
 
@@ -208,7 +234,7 @@ async def list_products(
             )
 
         catalog = [_to_product_schema(row) for row in rows]
-    except SQLAlchemyError:
+    except Exception:
         return _fallback_product_list(
             cluster=cluster,
             technique=technique,
@@ -265,7 +291,7 @@ async def get_product(
         if product is None:
             return None
         return _to_product_schema(product)
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.get_product(product_id)
 
 
@@ -284,7 +310,7 @@ async def get_product_by_serial(
         if product is None:
             return None
         return _to_product_schema(product)
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.get_product_by_serial(serial)
 
 
@@ -300,7 +326,7 @@ async def get_weaver(
         if weaver is None:
             return None
         return _to_weaver_schema(weaver)
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.get_weaver(weaver_id)
 
 
@@ -319,7 +345,7 @@ async def list_products_for_weaver(
         if not rows:
             return demo_store.list_products_for_weaver(weaver_id)
         return [_to_product_schema(row) for row in rows]
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.list_products_for_weaver(weaver_id)
 
 
@@ -337,7 +363,7 @@ async def list_clusters(*, db: AsyncSession | None) -> list[str]:
         if not values:
             return ["All clusters"]
         return ["All clusters", *values]
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.list_clusters()
 
 
@@ -357,7 +383,7 @@ async def list_techniques(*, db: AsyncSession | None) -> list[str]:
         if not values:
             return ["All techniques"]
         return ["All techniques", *values]
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.list_techniques()
 
 
@@ -375,7 +401,7 @@ async def list_categories(*, db: AsyncSession | None) -> list[str]:
         if not values:
             return ["All categories"]
         return ["All categories", *values]
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.list_categories()
 
 
@@ -390,14 +416,36 @@ async def get_verification(
     weaver = await get_weaver(db=db, weaver_id=product.weaver_id)
     if weaver is None:
         return None
-    is_revoked = product.serial.endswith("03155")
+    anchor = (
+        await get_product_passport(
+            db=db,
+            product_id=product.id,
+            refresh=False,
+        )
+        if db is not None
+        else None
+    )
+    record_hash = "not-minted"
+    if db is not None:
+        product_record = await db.get(Product, product.id)
+        if product_record is not None:
+            record_hash = product_record_hash(product_record)
+
     return VerificationPayload(
         product=product,
         weaver=weaver,
-        passport_status="revoked" if is_revoked else "valid",
-        anchor_hash="0x7a3f…c91e",
-        anchor_chain="Polygon-style lightweight anchor",
-        anchor_provider="hybrid registry + on-chain hash",
+        passport_status="revoked" if product.claim_status == "revoked" else "valid",
+        anchor_hash=anchor.record_hash if anchor else record_hash,
+        anchor_chain="Ethereum Sepolia" if anchor else "Not anchored",
+        anchor_provider="WeavePassport ERC-721" if anchor else "database record only",
+        anchor_status=anchor.status if anchor else "not_minted",
+        anchor_transaction_hash=anchor.transaction_hash if anchor else None,
+        anchor_explorer_url=anchor.explorer_url if anchor else None,
+        anchor_contract_address=anchor.contract_address if anchor else None,
+        anchor_token_id=anchor.token_id if anchor else None,
+        anchor_contract_explorer_url=anchor.contract_explorer_url if anchor else None,
+        anchor_token_explorer_url=anchor.token_explorer_url if anchor else None,
+        anchor_confirmations=anchor.confirmations if anchor else 0,
     )
 
 
@@ -446,6 +494,12 @@ async def create_rfq(
             buyer=payload.buyer,
             quantity=payload.quantity,
             notes=payload.notes,
+            contact_email=payload.contact_email,
+            delivery_pincode=payload.delivery_pincode,
+            required_by=payload.required_by,
+            sample_required=payload.sample_required,
+            accepts_handmade_variation=payload.accepts_handmade_variation,
+            target_budget=payload.target_budget,
             estimated_total=product.bulk_price * payload.quantity,
             status="submitted",
             created_at=_now(),
@@ -458,7 +512,7 @@ async def create_rfq(
     except ValueError:
         await db.rollback()
         raise
-    except SQLAlchemyError:
+    except Exception:
         await db.rollback()
         return demo_store.create_rfq(payload)
 
@@ -504,7 +558,19 @@ async def create_product(
             cluster=payload.cluster,
             gi=payload.gi,
             status=payload.status,
-            authenticated=payload.authenticated,
+            authenticated=False,
+            claim_status=(
+                "evidence_submitted"
+                if payload.evidence_url or payload.images
+                else "self_declared"
+            ),
+            evidence_url=payload.evidence_url,
+            original_audio_url=payload.original_audio_url,
+            verification_method=(
+                "Seller-submitted original media"
+                if payload.evidence_url or payload.images
+                else None
+            ),
             serial=serial,
             weaver_id=owner_weaver_id,
             images=list(payload.images or []),
@@ -647,8 +713,6 @@ async def update_product(
             if not _is_product_status_transition_allowed(product.status, payload.status):
                 raise ValueError("Invalid product status transition")
             product.status = payload.status
-        if payload.authenticated is not None:
-            product.authenticated = payload.authenticated
         if payload.images is not None:
             product.images = list(payload.images)
         if payload.story is not None:
@@ -702,7 +766,7 @@ async def update_rfq_status(
     except ValueError:
         await db.rollback()
         raise
-    except SQLAlchemyError:
+    except Exception:
         await db.rollback()
         return demo_store.update_rfq_status(rfq_id=rfq_id, status=status)
 
@@ -764,7 +828,7 @@ async def list_rfq_for_weaver(
             )
         ).scalars().all()
         return [_to_rfq_schema(row) for row in rows]
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.list_rfq_for_weaver(weaver_id)
 
 
@@ -798,7 +862,7 @@ async def list_orders_for_weaver(
             )
         ).scalars().all()
         return [_to_order_schema(row, products.get(row.product_id)) for row in rows]
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.list_orders_for_weaver(weaver_id)
 
 
@@ -839,5 +903,5 @@ async def seller_stats(
             open_orders=open_orders,
             active_skus=int(active_skus),
         )
-    except SQLAlchemyError:
+    except Exception:
         return demo_store.seller_stats(weaver_id)

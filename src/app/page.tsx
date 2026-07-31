@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { WarpThreads } from "@/components/WarpThreads";
 import { ProductCard } from "@/components/ProductCard";
+import { useLanguage } from "@/lib/language";
 import { listCatalogProducts, type Product } from "@/lib/weavelink-api";
 
 const fadeUp = {
@@ -31,6 +32,7 @@ const fadeUp = {
 const FALLBACK_PRODUCT_COUNT = 3;
 
 export default function HomePage() {
+  const { t } = useLanguage();
   const mountedRef = useRef(false);
   const [featured, setFeatured] = useState<Product[]>([]);
   const [isLive, setIsLive] = useState<boolean | null>(null);
@@ -119,7 +121,7 @@ export default function HomePage() {
             variants={fadeUp}
             className="mt-5 max-w-xl text-xl leading-snug text-ink sm:text-2xl"
           >
-            Authenticated handloom, sold direct from the loom.
+            {t("home.heroTitle")}
           </motion.h1>
           <motion.p
             custom={2}
@@ -128,8 +130,7 @@ export default function HomePage() {
             variants={fadeUp}
             className="mt-3 max-w-md text-base leading-relaxed text-muted"
           >
-            Voice or photo listing, Digital Product Passports, and dual retail /
-            bulk market access for rural weavers.
+            {t("home.heroBody")}
           </motion.p>
           <motion.div
             custom={3}
@@ -142,7 +143,7 @@ export default function HomePage() {
               href="/marketplace"
               className="inline-flex items-center gap-2 rounded-full bg-indigo px-5 py-3 text-sm font-medium text-paper transition hover:bg-indigo-mid"
             >
-              Browse authenticated pieces
+              {t("home.browse")}
               <ArrowRight size={16} />
             </Link>
             <Link
@@ -150,7 +151,7 @@ export default function HomePage() {
               className="inline-flex items-center gap-2 rounded-full border border-indigo/20 bg-paper/80 px-5 py-3 text-sm font-medium text-indigo backdrop-blur-sm transition hover:border-indigo/40"
             >
               <Mic size={16} />
-              Try voice listing
+              {t("home.tryVoice")}
             </Link>
           </motion.div>
         </div>
@@ -158,29 +159,29 @@ export default function HomePage() {
 
       <section className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
         <p className="text-[11px] uppercase tracking-[0.2em] text-muted">
-          How it works
+          {t("home.howLabel")}
         </p>
         <h2 className="mt-2 font-display text-3xl text-indigo sm:text-4xl">
-          From loom to trusted buyer in three steps
+          {t("home.howTitle")}
         </h2>
         <div className="mt-10 grid gap-8 md:grid-cols-3 md:gap-10">
           {[
             {
               icon: Mic,
-              title: "Voice or photo listing",
-              body: "Speak in Tamil, Odia, Hindi — or shoot 3 photos. AI drafts title, price band, tags, and catalog copy.",
+              title: t("home.step1Title"),
+              body: t("home.step1Body"),
               href: "/sell",
             },
             {
               icon: QrCode,
-              title: "Seal authenticity",
-              body: "One click creates a Digital Product Passport — QR or NFC — anchored so scans cannot be faked by a redirect.",
+              title: t("home.step2Title"),
+              body: t("home.step2Body"),
               href: "/verify/WL-KAN-2026-08421",
             },
             {
               icon: ShoppingBag,
-              title: "Sell retail or bulk",
-              body: "Same inventory powers a beautiful B2C page and a B2B desk with MOQ, samples, and RFQ.",
+              title: t("home.step3Title"),
+              body: t("home.step3Body"),
               href: "/b2b",
             },
           ].map((step, i) => (
@@ -193,7 +194,7 @@ export default function HomePage() {
                 <step.icon size={16} />
               </span>
               <p className="mt-4 text-[11px] uppercase tracking-[0.16em] text-muted">
-                Step {i + 1}
+                {t("home.step")} {i + 1}
               </p>
               <h3 className="mt-1 font-display text-xl text-ink group-hover:text-indigo">
                 {step.title}
@@ -261,24 +262,23 @@ export default function HomePage() {
           <div className="p-8 sm:p-10 lg:p-12">
             <Sparkles className="text-warp-gold" size={22} />
             <h2 className="mt-4 font-display text-3xl leading-tight text-paper sm:text-4xl">
-              Stories that travel with the cloth
+              {t("home.storiesTitle")}
             </h2>
             <p className="mt-4 max-w-md text-sm leading-relaxed text-paper/80">
-              A short voice note from the weaver becomes a polished multilingual
-              product story — on the storefront and on every authenticity scan.
+              {t("home.storiesBody")}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               <Link
                 href="/product/p-sambal-indigo"
                 className="rounded-full bg-paper px-5 py-2.5 text-sm font-medium text-indigo"
               >
-                Read a sample story
+                {t("home.readStory")}
               </Link>
               <Link
                 href="/verify/WL-KAN-2026-08421"
                 className="rounded-full border border-paper/30 px-5 py-2.5 text-sm font-medium text-paper"
               >
-                Scan a passport
+                {t("home.scanPassport")}
               </Link>
             </div>
           </div>

@@ -25,7 +25,7 @@ services:
       - key: API_V1_PREFIX
         value: /api/v1
       - key: DEMO_SEED_ENABLED
-        value: "true"
+        value: "false"
       - key: INTEGRITY_ANCHOR_PROVIDER
         value: database_only
       - key: LOG_LEVEL
@@ -34,6 +34,8 @@ services:
       - key: BACKEND_CORS_ORIGINS
         sync: false
       - key: FRONTEND_URL
+        sync: false
+      - key: PUBLIC_API_URL
         sync: false
       # Optional: Render Postgres / Supabase async-compatible URL.
       # Leave empty to run with in-memory demo_store (catalog + RFQ still work).
@@ -47,3 +49,15 @@ services:
         sync: false
       - key: SUPABASE_JWT_AUDIENCE
         value: authenticated
+      - key: SEPOLIA_RPC_URL
+        sync: false
+      - key: SEPOLIA_PRIVATE_KEY
+        sync: false
+      - key: WEAVE_PASSPORT_CONTRACT_ADDRESS
+        sync: false
+      - key: SEPOLIA_CHAIN_ID
+        value: "11155111"
+      - key: SEPOLIA_EXPLORER_URL
+        value: https://sepolia.etherscan.io
+      - key: SEPOLIA_CONFIRMATIONS_REQUIRED
+        value: "1"

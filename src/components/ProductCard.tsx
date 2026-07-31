@@ -21,7 +21,14 @@ export function ProductCard({ product }: { product: Product }) {
         <div className="absolute left-3 top-3">
           <AuthenticityBadge
             compact
-            status={product.authenticated ? "authenticated" : "revoked"}
+            status={
+              product.claimStatus === "revoked"
+                ? "revoked"
+                : product.claimStatus === "cooperative_verified" ||
+                    product.claimStatus === "gi_authority_verified"
+                  ? "authenticated"
+                  : "pending"
+            }
           />
         </div>
         {product.status === "in-production" && (

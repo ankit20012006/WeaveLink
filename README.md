@@ -73,13 +73,18 @@ This repo ships a **native Python** Render Blueprint — **no Docker**.
 | Variable | Example | Notes |
 | --- | --- | --- |
 | `APP_ENV` | `production` | |
-| `DEMO_SEED_ENABLED` | `true` | Seed mode for bootstrap deployments |
+| `DEMO_SEED_ENABLED` | `false` | Keep seed/demo data off for production |
 | `BACKEND_CORS_ORIGINS` | `https://your-app.vercel.app` | Comma-separated if multiple |
 | `FRONTEND_URL` | `https://your-app.vercel.app` | |
 | `DATABASE_URL` | *(optional)* | Render Postgres / Supabase |
 | `PYTHON_VERSION` | `3.12.8` | Matches `backend/runtime.txt` |
 
 5. After deploy, note the service URL, e.g. `https://weavelink.onrender.com`.
+
+Legacy route redirects are included in the frontend:
+
+- `/seller` → `/dashboard`
+- `/start-listing` → `/sell`
 
 Free-tier cold starts can take ~30–60s on first request; sell/listing actions retry with queued offline sync when API returns.
 
@@ -108,11 +113,13 @@ Also set Render `BACKEND_CORS_ORIGINS` to your Vercel origin(s).
 
 1. `/` — Landing with hero and marketplace entry points
 2. `/sell` — Voice / photo listing with AI draft and sync queue
-3. `/verify/WL-KAN-2026-08421` — Passport scan
+3. `/verify/<serial>` — Passport scan
 4. `/product/p-kanchi-maroon` — Product page and weaver story
 5. `/b2b` — Bulk RFQ desk
 6. `/dashboard` — Seller orders, inventory, RFQ inbox
 7. `/marketplace` — Filtered authenticated browsing
+8. `/seller` — Redirects to `/dashboard`
+9. `/start-listing` — Redirects to `/sell`
 
 ## Public API v1
 
@@ -128,6 +135,17 @@ Also set Render `BACKEND_CORS_ORIGINS` to your Vercel origin(s).
 | `POST` | `/api/v1/catalog/rfq` | B2B RFQ |
 | `PATCH` | `/api/v1/catalog/rfq/{id}` | Accept / reject |
 | `POST` | `/api/v1/catalog/products` | Create listing |
+| `GET` | `/api/v1/catalog/products/{id}/passport` | Sepolia NFT status |
+| `POST` | `/api/v1/catalog/products/{id}/passport/mint` | Owner-authorized ERC-721 mint |
+| `GET` | `/api/v1/catalog/passports/{id}/metadata` | Public NFT metadata |
+
+## Ethereum Sepolia passport
+
+The prototype includes an OpenZeppelin ERC-721 contract under `blockchain/`.
+A verified product owner can submit a real Sepolia mint from the product page,
+refresh confirmation status, and open the transaction on Sepolia Etherscan.
+Only a canonical product-record hash and public metadata reference are
+anchored; private artisan and KYC data remain off-chain.
 
 JSON uses **camelCase** field names to match frontend types.
 

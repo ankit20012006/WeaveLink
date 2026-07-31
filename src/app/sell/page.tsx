@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -12,7 +13,6 @@ import {
   Camera,
   Languages,
   Mic,
-  QrCode,
   Sparkles,
   WifiOff,
   CloudUpload,
@@ -20,6 +20,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { createProduct } from "@/lib/weavelink-api";
+import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import { VerificationQr } from "@/components/VerificationQr";
 
 const languages = [
   "Tamil",
@@ -36,6 +38,16 @@ const languages = [
 
 const steps = ["Language", "Capture", "AI draft", "Passport"] as const;
 
+const MAX_RETRY_ATTEMPTS = 6;
+const RETRY_BASE_MS = 3500;
+
+const getClientRef = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `draft-${Date.now()}-${Math.floor(Math.random() * 1000000)}`;
+};
+
 type DraftItem = {
   id: string;
   language: string;
@@ -48,6 +60,12 @@ type DraftItem = {
   createdAt: string;
   synced: boolean;
   productId?: string;
+  retryCount: number;
+  nextRetryAt: string | null;
+  lastFailure?: string;
+  clientRef: string;
+  imageUrls: string[];
+  audioUrl?: string;
 };
 
 const STORAGE_KEY = "weavelink-listing-drafts";
@@ -82,22 +100,45 @@ function draftToCreatePayload(draft: DraftItem) {
     bulkPrice: Math.max(Math.round(price * 0.82), 1),
     moq: 6,
     category: draft.category.trim() || "Saree",
-    technique: "Korvai",
-    materials: "Mulberry silk, zari",
-    loomType: "Pit loom",
-    cluster: "Kanchipuram",
-    gi: "Kanchipuram Silk",
+    technique: "Seller-declared; verification pending",
+    materials: "Seller-declared; verification pending",
+    loomType: "Seller-declared; verification pending",
+    cluster: "Seller-declared",
+    gi: null,
     status: "available" as const,
-    authenticated: true,
+    authenticated: false,
     serial: draft.id,
-    images: [
-      "https://images.unsplash.com/photo-1610030469983-98e550d6193c?w=1200&q=80",
-    ],
+    images: draft.imageUrls,
+    evidenceUrl: draft.audioUrl ?? draft.imageUrls[0] ?? null,
+    originalAudioUrl: draft.audioUrl ?? null,
     story: draft.storySeed,
     storyTitle: "Journey of this piece",
     tags,
     productionRange: "2026",
+    clientRef: draft.clientRef,
   };
+}
+
+function nextRetryAfter(attempt: number): number {
+  const safeAttempt = Math.min(attempt, MAX_RETRY_ATTEMPTS);
+  return RETRY_BASE_MS * 2 ** safeAttempt;
+}
+
+function isDueForRetry(item: DraftItem): boolean {
+  if (item.synced) {
+    return false;
+  }
+
+  if (item.retryCount >= MAX_RETRY_ATTEMPTS) {
+    return false;
+  }
+
+  if (!item.nextRetryAt) {
+    return true;
+  }
+
+  const nextRetryAtMs = new Date(item.nextRetryAt).getTime();
+  return Number.isFinite(nextRetryAtMs) && nextRetryAtMs <= Date.now();
 }
 
 export default function SellPage() {
@@ -106,89 +147,55 @@ export default function SellPage() {
   const [mode, setMode] = useState<"voice" | "photo">("voice");
   const [listening, setListening] = useState(false);
   const [draft, setDraft] = useState({
-    title: "Temple Border Kanchipuram Silk Saree",
-    category: "Saree",
-    suggestedPrice: "₹16,000 – ₹19,500",
-    tags: "silk · korvai · GI · authenticated",
-    storySeed: 'Voice in Tamil: “This border took four days…”',
+    title: "",
+    category: "",
+    suggestedPrice: "",
+    tags: "handloom · seller-declared",
+    storySeed: "",
   });
   const [passports, setPassports] = useState<string[]>([]);
   const [queuedDrafts, setQueuedDrafts] = useState<DraftItem[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
   const [isOnline, setIsOnline] = useState(true);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    setIsOnline(window.navigator.onLine);
-    const loadQueue = () => {
-      try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as DraftItem[];
-        setQueuedDrafts(Array.isArray(parsed) ? parsed : []);
-      } catch {
-        setQueuedDrafts([]);
-      }
-    };
-
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-    loadQueue();
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
-
-  useEffect(() => {
-    try {
-      if (typeof window === "undefined") return;
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(queuedDrafts));
-    } catch {
-      // keep flow resilient in restricted browser modes
-    }
-  }, [queuedDrafts]);
+  const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const [audioPreviewUrl, setAudioPreviewUrl] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [captureError, setCaptureError] = useState("");
+  const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
 
   const unsyncedDrafts = useMemo(
     () => queuedDrafts.filter((item) => !item.synced),
     [queuedDrafts],
   );
 
-  const addDraftToQueue = () => {
-    const nextDraft: DraftItem = {
-      id: generateSerial(),
-      language: lang,
-      mode,
-      title: draft.title,
-      category: draft.category,
-      suggestedPrice: draft.suggestedPrice,
-      tags: draft.tags,
-      storySeed: draft.storySeed,
-      createdAt: new Date().toISOString(),
-      synced: false,
-    };
-    setQueuedDrafts((current) => [...current, nextDraft]);
-    setPassports((current) => [nextDraft.id, ...current].slice(0, 8));
-    setStep(3);
-  };
+  const dueDrafts = useMemo(
+    () => unsyncedDrafts.filter(isDueForRetry),
+    [unsyncedDrafts],
+  );
 
   const syncQueue = async () => {
-    if (!isOnline || unsyncedDrafts.length === 0) return;
+    if (!isOnline || dueDrafts.length === 0 || syncing) {
+      return;
+    }
+
     setSyncing(true);
     setSyncMessage("Syncing drafts to WeaveLink API...");
 
     let syncedCount = 0;
     let failedCount = 0;
+    let exhaustedCount = 0;
     const nextDrafts = [...queuedDrafts];
+    const nextRetryAt = new Date(Date.now() + RETRY_BASE_MS).toISOString();
 
     for (let index = 0; index < nextDrafts.length; index += 1) {
       const entry = nextDrafts[index];
-      if (entry.synced) continue;
+      if (entry.synced || !isDueForRetry(entry)) {
+        continue;
+      }
 
       try {
         const created = await createProduct(draftToCreatePayload(entry));
@@ -197,10 +204,29 @@ export default function SellPage() {
           synced: true,
           productId: created.id,
           id: created.serial || entry.id,
+          retryCount: 0,
+          nextRetryAt: null,
+          lastFailure: undefined,
         };
         syncedCount += 1;
-      } catch {
+      } catch (error) {
+        const retryCount = Math.min(entry.retryCount + 1, MAX_RETRY_ATTEMPTS);
+        const hasAttemptsLeft = retryCount < MAX_RETRY_ATTEMPTS;
         failedCount += 1;
+        nextDrafts[index] = {
+          ...entry,
+          retryCount,
+          nextRetryAt: hasAttemptsLeft
+            ? new Date(Date.now() + nextRetryAfter(retryCount)).toISOString()
+            : null,
+          lastFailure:
+            error instanceof Error
+              ? error.message
+              : "Unable to reach API for draft sync.",
+        };
+        if (!hasAttemptsLeft) {
+          exhaustedCount += 1;
+        }
       }
     }
 
@@ -218,14 +244,201 @@ export default function SellPage() {
       );
     } else if (syncedCount === 0) {
       setSyncMessage(
-        "Could not reach API. Drafts stay queued offline — retry when backend is up.",
+        exhaustedCount > 0
+          ? "Some listings hit retry limit. Keep them saved and retry later."
+          : "Could not reach API. Drafts stay queued offline — retry when backend is up.",
       );
     } else {
       setSyncMessage(
         `Synced ${syncedCount}, ${failedCount} still queued. Retry remaining drafts.`,
       );
     }
+
     setSyncing(false);
+  };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    setIsOnline(window.navigator.onLine);
+    const loadQueue = () => {
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const parsed = JSON.parse(raw) as DraftItem[];
+        setQueuedDrafts(
+          Array.isArray(parsed)
+            ? parsed.map((item) => ({
+                ...item,
+                retryCount: item.retryCount ?? 0,
+                nextRetryAt: item.nextRetryAt ?? null,
+              }))
+            : [],
+        );
+      } catch {
+        setQueuedDrafts([]);
+      }
+    };
+
+    const handleOnline = () => {
+      setIsOnline(true);
+      void syncQueue();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    loadQueue();
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [syncQueue]);
+
+  useEffect(() => {
+    try {
+      if (typeof window === "undefined") return;
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(queuedDrafts));
+    } catch {
+      // keep flow resilient in restricted browser modes
+    }
+  }, [queuedDrafts]);
+
+  useEffect(() => {
+    if (!isOnline || syncing || dueDrafts.length === 0) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void syncQueue();
+    }, RETRY_BASE_MS);
+
+    return () => clearTimeout(timer);
+  }, [isOnline, syncing, dueDrafts.length, syncQueue]);
+
+  const toggleRecording = async () => {
+    if (recorderRef.current?.state === "recording") {
+      recorderRef.current.stop();
+      return;
+    }
+    try {
+      setCaptureError("");
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+      const recorder = new MediaRecorder(stream);
+      recorderRef.current = recorder;
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        setAudioBlob(blob);
+        setAudioPreviewUrl(URL.createObjectURL(blob));
+        setListening(false);
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        setDraft((current) => ({
+          ...current,
+          storySeed:
+            current.storySeed ||
+            `Original ${lang} voice note captured. Add the approved factual transcript here.`,
+        }));
+      };
+      recorder.start();
+      setMode("voice");
+      setListening(true);
+    } catch (error) {
+      setCaptureError(
+        error instanceof Error ? error.message : "Microphone access failed.",
+      );
+    }
+  };
+
+  const uploadEvidence = async (
+    serial: string,
+  ): Promise<{ imageUrls: string[]; audioUrl?: string }> => {
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) throw new Error("Supabase authentication is not configured.");
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    if (!session) throw new Error("Sign in as a verified seller before uploading.");
+
+    const basePath = `${session.user.id}/${serial}`;
+    const imageUrls: string[] = [];
+    for (const [index, photo] of photos.entries()) {
+      const extension = photo.name.split(".").pop()?.toLowerCase() || "jpg";
+      const path = `${basePath}/photo-${index + 1}.${extension}`;
+      const { error } = await supabase.storage
+        .from("product-media")
+        .upload(path, photo, { contentType: photo.type, upsert: false });
+      if (error) throw error;
+      imageUrls.push(
+        supabase.storage.from("product-media").getPublicUrl(path).data.publicUrl,
+      );
+    }
+
+    let audioUrl: string | undefined;
+    if (audioBlob) {
+      const path = `${basePath}/artisan-voice.webm`;
+      const { error } = await supabase.storage
+        .from("product-media")
+        .upload(path, audioBlob, {
+          contentType: audioBlob.type || "audio/webm",
+          upsert: false,
+        });
+      if (error) throw error;
+      audioUrl = supabase.storage.from("product-media").getPublicUrl(path).data.publicUrl;
+    }
+    return { imageUrls, audioUrl };
+  };
+
+  const addDraftToQueue = async () => {
+    if (!audioBlob && photos.length === 0) {
+      setCaptureError("Record a voice note or add product photos first.");
+      setStep(1);
+      return;
+    }
+    setUploadingEvidence(true);
+    setCaptureError("");
+    const serial = generateSerial();
+    let evidence: { imageUrls: string[]; audioUrl?: string };
+    try {
+      evidence = await uploadEvidence(serial);
+    } catch (error) {
+      setCaptureError(
+        error instanceof Error ? error.message : "Evidence upload failed.",
+      );
+      setUploadingEvidence(false);
+      return;
+    }
+    const nextDraft: DraftItem = {
+      id: serial,
+      clientRef: getClientRef(),
+      imageUrls: evidence.imageUrls,
+      audioUrl: evidence.audioUrl,
+      language: lang,
+      mode,
+      title: draft.title,
+      category: draft.category,
+      suggestedPrice: draft.suggestedPrice,
+      tags: draft.tags,
+      storySeed: draft.storySeed,
+      createdAt: new Date().toISOString(),
+      synced: false,
+      retryCount: 0,
+      nextRetryAt: null,
+    };
+    setQueuedDrafts((current) => [...current, nextDraft]);
+    setPassports((current) => [nextDraft.id, ...current].slice(0, 8));
+    setStep(3);
+    setUploadingEvidence(false);
   };
 
   return (
@@ -280,7 +493,7 @@ export default function SellPage() {
                 <h2 className="font-display text-2xl">Choose your language</h2>
               </div>
               <p className="mt-2 text-sm text-muted">
-                Voice registration via BHASHINI / Indic speech models.
+                Choose the language used for the seller-approved record.
               </p>
               <div className="mt-6 flex flex-wrap gap-2">
                 {languages.map((l) => (
@@ -325,11 +538,7 @@ export default function SellPage() {
               <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 <button
                   type="button"
-                  onClick={() => {
-                    setMode("voice");
-                    setListening(true);
-                    setTimeout(() => setListening(false), 2200);
-                  }}
+                  onClick={toggleRecording}
                   className={`rounded-2xl border p-5 text-left transition ${
                     mode === "voice"
                       ? "border-indigo bg-indigo-soft/50"
@@ -340,38 +549,59 @@ export default function SellPage() {
                   <p className="mt-3 font-medium text-ink">Voice note</p>
                   <p className="mt-1 text-xs text-muted">
                     {listening
-                      ? `Listening in ${lang}…`
-                      : "Tap to record"}
+                      ? `Recording in ${lang} — tap to stop`
+                      : audioBlob
+                        ? "Voice note captured — tap to replace"
+                        : "Tap to record"}
                   </p>
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setMode("photo")}
+                <label
                   className={`rounded-2xl border p-5 text-left transition ${
                     mode === "photo"
                       ? "border-indigo bg-indigo-soft/50"
                       : "border-[var(--line)]"
                   }`}
                 >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    multiple
+                    className="sr-only"
+                    onChange={(event) => {
+                      setMode("photo");
+                      setPhotos(Array.from(event.target.files ?? []).slice(0, 5));
+                    }}
+                  />
                   <Camera className="text-indigo" />
                   <p className="mt-3 font-medium text-ink">Photo to catalog</p>
                   <p className="mt-1 text-xs text-muted">
-                    Add 4 photos to draft
+                    {photos.length
+                      ? `${photos.length} real photo${photos.length === 1 ? "" : "s"} selected`
+                      : "Add front, back, detail and edge photos"}
                   </p>
-                </button>
+                </label>
               </div>
+              {audioPreviewUrl ? (
+                <audio controls src={audioPreviewUrl} className="mt-4 w-full" />
+              ) : null}
+              {photos.length ? (
+                <p className="mt-3 text-xs text-muted">
+                  {photos.map((photo) => photo.name).join(" · ")}
+                </p>
+              ) : null}
+              {captureError ? (
+                <p className="mt-3 rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                  {captureError}
+                </p>
+              ) : null}
               <button
                 type="button"
-                onClick={() => {
-                  setDraft({
-                    ...draft,
-                    storySeed: `Voice in ${lang}: “This border took four days…”`,
-                  });
-                  setStep(2);
-                }}
+                onClick={() => setStep(2)}
+                disabled={!audioBlob && photos.length === 0}
                 className="mt-8 rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
               >
-                Generate listing draft
+                Review factual listing fields
               </button>
             </motion.div>
           )}
@@ -386,11 +616,12 @@ export default function SellPage() {
               <div className="flex items-center gap-2">
                 <Sparkles className="text-warp-gold" size={18} />
                 <h2 className="font-display text-2xl text-indigo">
-                  AI draft ready
+                  Factual draft for approval
                 </h2>
               </div>
               <p className="mt-2 text-sm text-muted">
-                Review and edit — weaver stays in control.
+                Fill and approve every factual field. No GI, material or origin
+                claim is inferred from media.
               </p>
               <div className="mt-6 space-y-3 rounded-2xl bg-mist p-5 text-sm">
                 <Row
@@ -460,10 +691,13 @@ export default function SellPage() {
               </div>
               <button
                 type="button"
-                onClick={addDraftToQueue}
+                onClick={() => void addDraftToQueue()}
+                disabled={uploadingEvidence}
                 className="mt-8 rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
               >
-                Generate draft and move to passport step
+                {uploadingEvidence
+                  ? "Uploading original evidence..."
+                  : "Approve facts and upload evidence"}
               </button>
             </motion.div>
           )}
@@ -489,11 +723,11 @@ export default function SellPage() {
                 {passports[0] ?? "—"}
               </p>
               <p className="mx-auto mt-3 max-w-md text-sm text-muted">
-                Static QR ready now. NFC tag fulfillment available for
-                cooperatives. Queue entries sync once network is available.
+                This QR opens the public evidence record after the listing is
+                synced. It does not claim independent verification.
               </p>
-              <div className="mt-6 inline-flex items-center gap-2 rounded-2xl border border-dashed border-indigo/30 bg-mist px-6 py-8">
-                <QrCode size={64} className="text-indigo" />
+              <div className="mt-6 inline-flex">
+                <VerificationQr serial={passports[0] ?? "pending"} />
               </div>
 
               <div className="mt-6 text-left">
@@ -505,9 +739,9 @@ export default function SellPage() {
                 <button
                   type="button"
                   onClick={syncQueue}
-                  disabled={syncing || !isOnline || unsyncedDrafts.length === 0}
+                  disabled={syncing || !isOnline || dueDrafts.length === 0}
                   className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-medium text-paper ${
-                    syncing || !isOnline || unsyncedDrafts.length === 0
+                    syncing || !isOnline || dueDrafts.length === 0
                       ? "cursor-not-allowed bg-indigo/65"
                       : "bg-indigo"
                   }`}
@@ -533,7 +767,19 @@ export default function SellPage() {
                         <p className="font-medium text-ink">{item.title}</p>
                         <p className="mt-0.5 text-xs text-muted">
                           {item.id} · {item.synced ? "Synced" : "Queued"}
+                          {item.retryCount > 0 &&
+                            ` · retries ${item.retryCount}/${MAX_RETRY_ATTEMPTS}`}
                         </p>
+                        {item.lastFailure ? (
+                          <p className="mt-0.5 text-xs text-rose-600">
+                            {item.lastFailure}
+                          </p>
+                        ) : null}
+                        {item.nextRetryAt ? (
+                          <p className="mt-0.5 text-xs text-muted">
+                            Next retry: {new Date(item.nextRetryAt).toLocaleTimeString()}
+                          </p>
+                        ) : null}
                       </li>
                     ))}
                   </ul>

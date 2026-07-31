@@ -4,15 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { useState } from "react";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
+import { useLanguage, type MessageKey } from "@/lib/language";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { href: "/marketplace", label: "Marketplace" },
-  { href: "/b2b", label: "B2B" },
-  { href: "/sell", label: "List" },
-  { href: "/dashboard", label: "Seller" },
-  { href: "/verify/WL-KAN-2026-08421", label: "Verify" },
-];
+  { href: "/marketplace", label: "nav.marketplace" },
+  { href: "/b2b", label: "nav.b2b" },
+  { href: "/sell", label: "nav.list" },
+  { href: "/dashboard", label: "nav.seller" },
+  { href: "/verify/WL-KAN-2026-08421", label: "nav.verify" },
+  { href: "/resources", label: "nav.learn" },
+] satisfies { href: string; label: MessageKey }[];
 
 function isActive(pathname: string, href: string) {
   if (href.startsWith("/verify")) return pathname.startsWith("/verify");
@@ -22,6 +25,7 @@ function isActive(pathname: string, href: string) {
 export function SiteHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const { t } = useLanguage();
 
   return (
     <header className="sticky top-0 z-50 border-b border-[var(--line)] bg-[color-mix(in_srgb,var(--mist)_88%,transparent)] backdrop-blur-md">
@@ -45,17 +49,18 @@ export function SiteHeader() {
                 isActive(pathname, link.href) && "bg-indigo-soft text-indigo",
               )}
             >
-              {link.label}
+              {t(link.label)}
             </Link>
           ))}
         </nav>
 
         <div className="flex items-center gap-2">
+          <LanguageSwitcher />
           <Link
             href="/sell"
             className="hidden rounded-full bg-indigo px-4 py-2 text-sm font-medium text-paper transition hover:bg-indigo-mid sm:inline-flex"
           >
-            Start listing
+            {t("nav.startListing")}
           </Link>
           <button
             type="button"
@@ -78,7 +83,7 @@ export function SiteHeader() {
                 onClick={() => setOpen(false)}
                 className="rounded-lg px-3 py-2.5 text-sm text-ink hover:bg-cotton"
               >
-                {link.label}
+                {t(link.label)}
               </Link>
             ))}
             <Link
@@ -86,7 +91,7 @@ export function SiteHeader() {
               onClick={() => setOpen(false)}
               className="mt-2 rounded-full bg-indigo px-4 py-2.5 text-center text-sm font-medium text-paper"
             >
-              Start listing
+              {t("nav.startListing")}
             </Link>
           </div>
         </div>

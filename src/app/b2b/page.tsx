@@ -30,8 +30,24 @@ const TIER_OPTIONS = [
 
 const SAMPLE_FEE = 1200;
 const QUEUE_STORAGE_KEY = "weavelink-rfq-queue";
+const MAX_RETRY_ATTEMPTS = 6;
+const RETRY_BASE_MS = 4000;
 
-type QueuedRFQ = Omit<RFQRecord, "status"> & { status: "submitted" };
+const getClientRef = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `rfq-${Date.now()}-${Math.floor(Math.random() * 1000000).toString(16)}`;
+};
+
+type QueuedRFQ = Omit<RFQRecord, "status"> & {
+  status: "submitted";
+  retryCount: number;
+  nextRetryAt: string | null;
+  lastFailure?: string;
+  clientRef: string;
+};
+
 type SyncLogLevel = "info" | "success" | "warning" | "error";
 type SyncLogEntry = {
   id: string;
@@ -40,11 +56,34 @@ type SyncLogEntry = {
   message: string;
 };
 
+function nextRetryAfter(attempt: number): number {
+  const safeAttempt = Math.min(attempt, MAX_RETRY_ATTEMPTS);
+  return RETRY_BASE_MS * 2 ** safeAttempt;
+}
+
+function isDueForRetry(item: QueuedRFQ): boolean {
+  if (item.retryCount >= MAX_RETRY_ATTEMPTS) {
+    return false;
+  }
+
+  if (!item.nextRetryAt) {
+    return true;
+  }
+
+  const nextRetryAtMs = new Date(item.nextRetryAt).getTime();
+  return Number.isFinite(nextRetryAtMs) && nextRetryAtMs <= Date.now();
+}
+
 export default function B2BPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [qty, setQty] = useState(24);
   const [buyer, setBuyer] = useState("Aarohi Design Co.");
+  const [contactEmail, setContactEmail] = useState("");
+  const [deliveryPincode, setDeliveryPincode] = useState("");
+  const [requiredBy, setRequiredBy] = useState("");
+  const [acceptsVariation, setAcceptsVariation] = useState(false);
+  const [targetBudget, setTargetBudget] = useState("");
   const [notes, setNotes] = useState(
     "Need sample stole in indigo + quote for hotel amenity kits. Prefer NFC tags.",
   );
@@ -75,7 +114,15 @@ export default function B2BPage() {
         setProducts(catalogProducts);
         setIsApiEnabled(true);
         if (catalogProducts[0]?.id) {
-          setSelected(catalogProducts[0].id);
+          const requestedProductId =
+            typeof window === "undefined"
+              ? null
+              : new URLSearchParams(window.location.search).get("productId");
+          setSelected(
+            catalogProducts.some((product) => product.id === requestedProductId)
+              ? requestedProductId!
+              : catalogProducts[0].id,
+          );
         }
       } catch {
         if (!isMounted) return;
@@ -91,14 +138,29 @@ export default function B2BPage() {
         const raw = window.localStorage.getItem(QUEUE_STORAGE_KEY);
         if (!raw) return;
         const parsed = JSON.parse(raw) as QueuedRFQ[];
-        setQueuedRfqs(Array.isArray(parsed) ? parsed : []);
+        setQueuedRfqs(
+          Array.isArray(parsed)
+            ? parsed.map((item) => ({
+                ...item,
+                retryCount: item.retryCount ?? 0,
+                nextRetryAt: item.nextRetryAt ?? null,
+                clientRef: item.clientRef || getClientRef(),
+              }))
+            : [],
+        );
       } catch {
         setQueuedRfqs([]);
       }
     };
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOnline = () => {
+      setIsOnline(true);
+      void syncQueue();
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+    };
 
     if (typeof window !== "undefined") {
       setIsOnline(window.navigator.onLine);
@@ -127,16 +189,28 @@ export default function B2BPage() {
     }
   }, [queuedRfqs]);
 
+  const dueQueue = useMemo(
+    () => queuedRfqs.filter((item) => isDueForRetry(item)),
+    [queuedRfqs],
+  );
+
+  useEffect(() => {
+    if (!isOnline || isSyncingQueue || dueQueue.length === 0) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      void syncQueue();
+    }, RETRY_BASE_MS);
+
+    return () => clearTimeout(timer);
+  }, [isOnline, isSyncingQueue, dueQueue.length]);
+
   useEffect(() => {
     if (!selectedProduct) return;
     setQty(selectedProduct.moq);
     setSent(false);
   }, [selectedProduct]);
-
-  const minimumReached = useMemo(() => {
-    if (!selectedProduct) return false;
-    return qty >= selectedProduct.moq;
-  }, [qty, selectedProduct]);
 
   const addSyncLog = (message: string, level: SyncLogLevel = "info") => {
     setSyncLogs((current) => {
@@ -168,6 +242,11 @@ export default function B2BPage() {
     [effectiveUnitPrice, qty, sampleFee],
   );
 
+  const minimumReached = useMemo(() => {
+    if (!selectedProduct) return false;
+    return qty >= selectedProduct.moq;
+  }, [qty, selectedProduct]);
+
   const submitRfq = async () => {
     if (!selectedProduct || minimumReached === false) {
       setErrorMessage(
@@ -181,6 +260,13 @@ export default function B2BPage() {
       buyer,
       quantity: qty,
       notes: `${notes}${includeSample ? " [Sample requested]" : ""}`.trim(),
+      contactEmail,
+      deliveryPincode,
+      requiredBy: requiredBy || null,
+      sampleRequired: includeSample,
+      acceptsHandmadeVariation: acceptsVariation,
+      targetBudget: targetBudget ? Number(targetBudget) : null,
+      clientRef: getClientRef(),
     };
 
     setIsSubmitting(true);
@@ -205,9 +291,18 @@ export default function B2BPage() {
         buyer,
         quantity: qty,
         notes: rfqPayload.notes,
+        contactEmail,
+        deliveryPincode,
+        requiredBy: requiredBy || null,
+        sampleRequired: includeSample,
+        acceptsHandmadeVariation: acceptsVariation,
+        targetBudget: targetBudget ? Number(targetBudget) : null,
         estimatedTotal: estimate,
         status: "submitted",
         createdAt: new Date().toISOString(),
+        retryCount: 0,
+        nextRetryAt: new Date(Date.now() + RETRY_BASE_MS).toISOString(),
+        clientRef: rfqPayload.clientRef,
       };
       setQueuedRfqs((current) => [...current, queuedEntry]);
       setSent(true);
@@ -225,27 +320,53 @@ export default function B2BPage() {
   };
 
   const syncQueue = async () => {
-    if (!isOnline || queuedRfqs.length === 0 || isSyncingQueue) return;
+    if (!isOnline || dueQueue.length === 0 || isSyncingQueue) return;
 
     setIsSyncingQueue(true);
     setSyncMessage("Syncing queued RFQs to API...");
-    addSyncLog(`Starting sync for ${queuedRfqs.length} queued RFQ(s).`, "info");
+    addSyncLog(`Starting sync for ${dueQueue.length} queued RFQ(s).`, "info");
 
     const nextQueue: QueuedRFQ[] = [];
     let synced = 0;
+    let exhausted = 0;
 
     for (const entry of queuedRfqs) {
+      if (!isDueForRetry(entry)) {
+        nextQueue.push(entry);
+        continue;
+      }
+
       try {
         await createRFQ({
           productId: entry.productId,
           buyer: entry.buyer,
           quantity: entry.quantity,
           notes: entry.notes,
+          contactEmail: entry.contactEmail ?? "",
+          deliveryPincode: entry.deliveryPincode ?? "",
+          requiredBy: entry.requiredBy,
+          sampleRequired: Boolean(entry.sampleRequired),
+          acceptsHandmadeVariation: Boolean(entry.acceptsHandmadeVariation),
+          targetBudget: entry.targetBudget,
+          clientRef: entry.clientRef,
         });
         synced += 1;
         addSyncLog(`Synced queued RFQ ${entry.id}.`, "success");
       } catch {
-        nextQueue.push(entry);
+        const retryCount = Math.min(entry.retryCount + 1, MAX_RETRY_ATTEMPTS);
+        const hasAttemptsLeft = retryCount < MAX_RETRY_ATTEMPTS;
+        if (!hasAttemptsLeft) {
+          exhausted += 1;
+        }
+
+        nextQueue.push({
+          ...entry,
+          retryCount,
+          nextRetryAt: hasAttemptsLeft
+            ? new Date(Date.now() + nextRetryAfter(retryCount)).toISOString()
+            : null,
+          lastFailure: "Could not sync this RFQ now. Will retry automatically.",
+        });
         addSyncLog(`Could not sync queued RFQ ${entry.id}, kept offline.`, "warning");
       }
     }
@@ -259,11 +380,19 @@ export default function B2BPage() {
     addSyncLog(
       nextQueue.length === 0
         ? "Queued RFQ sync completed. All items cleared."
-        : `Queued RFQ sync partially complete. ${nextQueue.length} item(s) still queued.`,
+        : `Queued RFQ sync partially complete. ${nextQueue.length} item(s) still queued.${
+            exhausted > 0 ? ` ${exhausted} reached max retries.` : ""
+          }`,
       nextQueue.length === 0 ? "success" : "warning",
     );
     setIsSyncingQueue(false);
   };
+
+  useEffect(() => {
+    if (isOnline && dueQueue.length > 0 && !isSyncingQueue) {
+      void syncQueue();
+    }
+  }, [isOnline, dueQueue.length, isSyncingQueue]);
 
   if (!selectedProduct) return null;
 
@@ -364,6 +493,46 @@ export default function B2BPage() {
             />
           </label>
 
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <label className="block text-xs text-muted">
+              Contact email
+              <input
+                type="email"
+                required
+                value={contactEmail}
+                onChange={(event) => setContactEmail(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-[var(--line)] bg-mist px-3 py-2.5 text-sm text-ink"
+              />
+            </label>
+            <label className="block text-xs text-muted">
+              Delivery pincode
+              <input
+                value={deliveryPincode}
+                onChange={(event) => setDeliveryPincode(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-[var(--line)] bg-mist px-3 py-2.5 text-sm text-ink"
+              />
+            </label>
+            <label className="block text-xs text-muted">
+              Needed by
+              <input
+                type="date"
+                value={requiredBy}
+                onChange={(event) => setRequiredBy(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-[var(--line)] bg-mist px-3 py-2.5 text-sm text-ink"
+              />
+            </label>
+            <label className="block text-xs text-muted">
+              Target total budget
+              <input
+                type="number"
+                min={1}
+                value={targetBudget}
+                onChange={(event) => setTargetBudget(event.target.value)}
+                className="mt-1 w-full rounded-xl border border-[var(--line)] bg-mist px-3 py-2.5 text-sm text-ink"
+              />
+            </label>
+          </div>
+
           <label className="mt-4 block text-xs text-muted">
             Notes / sample request
             <textarea
@@ -381,6 +550,15 @@ export default function B2BPage() {
               onChange={(event) => setIncludeSample(event.target.checked)}
             />
             Request sample dispatch (sample fee added)
+          </label>
+          <label className="mt-3 flex items-start gap-2 text-xs text-muted">
+            <input
+              type="checkbox"
+              checked={acceptsVariation}
+              onChange={(event) => setAcceptsVariation(event.target.checked)}
+            />
+            I understand handmade pieces may have minor color, weave and size
+            variations.
           </label>
 
           <div className="mt-6 rounded-2xl bg-mist p-4">
@@ -443,7 +621,13 @@ export default function B2BPage() {
             <button
               type="button"
               onClick={submitRfq}
-              disabled={isSubmitting || !minimumReached}
+              disabled={
+                isSubmitting ||
+                !minimumReached ||
+                !contactEmail.trim() ||
+                !deliveryPincode.trim() ||
+                !acceptsVariation
+              }
               className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-medium text-paper ${
                 isSubmitting || !minimumReached
                   ? "cursor-not-allowed bg-indigo/65"
@@ -478,7 +662,20 @@ export default function B2BPage() {
                     <p className="font-medium text-ink">{queued.productTitle}</p>
                     <p className="mt-0.5 text-xs text-muted">
                       {queued.quantity} pcs · {queued.buyer} · {queued.id}
+                      {queued.retryCount > 0
+                        ? ` · retry ${queued.retryCount}/${MAX_RETRY_ATTEMPTS}`
+                        : ""}
                     </p>
+                    {queued.lastFailure ? (
+                      <p className="mt-0.5 text-xs text-rose-600">
+                        {queued.lastFailure}
+                      </p>
+                    ) : null}
+                    {queued.nextRetryAt ? (
+                      <p className="mt-0.5 text-xs text-muted">
+                        Next retry: {new Date(queued.nextRetryAt).toLocaleTimeString()}
+                      </p>
+                    ) : null}
                   </li>
                 ))}
               </ul>

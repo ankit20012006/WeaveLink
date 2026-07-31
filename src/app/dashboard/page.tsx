@@ -1,10 +1,16 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Wallet } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { formatINR } from "@/lib/utils";
+import { getStoredOrDefaultWeaverId } from "@/lib/weave-session";
 import {
+  getMe,
+  getMyOrders,
+  getMyProducts,
+  getMyRFQs,
+  getMyStats,
   getSellerOrders,
   getSellerProducts,
   getSellerRFQs,
@@ -44,19 +50,60 @@ export default function DashboardPage() {
     rfqs: [],
     isApiLive: false,
   });
+  const [weaverId, setWeaverId] = useState<string>(
+    getStoredOrDefaultWeaverId(),
+  );
   const [isSyncing, setIsSyncing] = useState(false);
-  const weaverId = "w-lakshmi";
+  const [paymentMessage, setPaymentMessage] = useState("");
 
   const loadDashboard = useCallback(async () => {
     setIsSyncing(true);
+
+    const me = await getMe().catch(() => null);
+    const mappedWeaverId =
+      me?.profile?.weaverId && typeof me.profile.weaverId === "string"
+        ? me.profile.weaverId
+        : getStoredOrDefaultWeaverId();
+
+    const hasMeScope = Boolean(me?.profile?.weaverId);
+    setWeaverId(mappedWeaverId);
+
+    const sellersCalls = hasMeScope
+      ? ([
+          getMyOrders(),
+          getMyProducts(),
+          getMyStats(),
+          getMyRFQs(),
+        ] as const)
+      : ([
+          getSellerOrders(mappedWeaverId),
+          getSellerProducts(mappedWeaverId),
+          getSellerStats(mappedWeaverId),
+          getSellerRFQs(mappedWeaverId),
+        ] as const);
+
     try {
-      const [sellerOrders, sellerProducts, stats, sellerRfqs] =
-        await Promise.all([
-          getSellerOrders(weaverId),
-          getSellerProducts(weaverId),
-          getSellerStats(weaverId),
-          getSellerRFQs(weaverId),
-        ]);
+      const [sellerOrdersResult, sellerProductsResult, statsResult, sellerRfqsResult] =
+        await Promise.allSettled(sellersCalls);
+
+      const sellerOrders = sellerOrdersResult.status === "fulfilled"
+        ? sellerOrdersResult.value
+        : [];
+      const sellerProducts = sellerProductsResult.status === "fulfilled"
+        ? sellerProductsResult.value
+        : [];
+      const stats =
+        statsResult.status === "fulfilled"
+          ? statsResult.value
+          : {
+              monthGmv: 0,
+              pendingSettlement: 0,
+              openOrders: 0,
+              activeSkus: 0,
+            };
+      const sellerRfqs = sellerRfqsResult.status === "fulfilled"
+        ? sellerRfqsResult.value
+        : [];
 
       setState({
         orders: sellerOrders,
@@ -66,7 +113,11 @@ export default function DashboardPage() {
         openOrders: stats.openOrders,
         openRfqs: sellerRfqs.filter((rfq) => rfq.status === "submitted").length,
         rfqs: sellerRfqs,
-        isApiLive: true,
+        isApiLive:
+          sellerOrdersResult.status === "fulfilled" ||
+          sellerProductsResult.status === "fulfilled" ||
+          sellerRfqsResult.status === "fulfilled" ||
+          statsResult.status === "fulfilled",
       });
     } catch {
       setState({
@@ -87,6 +138,12 @@ export default function DashboardPage() {
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  const startSettlementCheckout = () => {
+    setPaymentMessage(
+      "Payout transfer is not enabled yet. Funds must follow a verified buyer payment, fulfilment milestone, and server-confirmed payout record.",
+    );
+  };
 
   const sourceText = state.isApiLive ? "Live API" : "API unavailable";
   const sourceTone = state.isApiLive
@@ -117,6 +174,15 @@ export default function DashboardPage() {
             <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
             {isSyncing ? "Syncing..." : "Sync dashboard"}
           </button>
+          <button
+            type="button"
+            onClick={startSettlementCheckout}
+            disabled={state.pendingPayout <= 0}
+            className="inline-flex items-center gap-1.5 rounded-full bg-loom px-4 py-2 text-sm font-medium text-paper transition disabled:cursor-not-allowed disabled:opacity-70"
+          >
+            <Wallet size={14} />
+            Payout requirements
+          </button>
           <Link
             href="/sell"
             className="rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
@@ -135,6 +201,9 @@ export default function DashboardPage() {
           <p className="text-xs text-muted">Refreshing dashboard data from API…</p>
         ) : null}
       </div>
+      {paymentMessage ? (
+        <p className="mt-2 text-xs text-muted">{paymentMessage}</p>
+      ) : null}
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         {[

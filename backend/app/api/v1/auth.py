@@ -1,12 +1,17 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.api.deps import AuthUser, get_user_id, resolve_auth_roles, require_auth
+from app.api.deps import (
+    AuthUser,
+    get_claimed_email,
+    get_user_id,
+    require_auth,
+    resolve_auth_roles,
+)
 from app.db.session import get_db
 from app.schemas.auth import AuthMe, AuthProfilePatch, AuthRoleList
 from app.services.auth_db import get_user_profile, upsert_user_profile
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -49,10 +54,7 @@ async def patch_me(
     profile = await upsert_user_profile(
         db,
         user_id=user_id,
-        email=payload.email,
+        email=get_claimed_email(user),
         display_name=payload.display_name,
-        weaver_id=payload.weaver_id,
-        role=payload.role,
-        verified=payload.verified,
     )
     return AuthMe(user=user, roles=resolve_auth_roles(user), profile=profile)

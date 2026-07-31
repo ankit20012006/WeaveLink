@@ -9,18 +9,22 @@ import {
   Sparkles,
 } from "lucide-react";
 import { AuthenticityBadge } from "@/components/AuthenticityBadge";
+import { PassportMintPanel } from "@/components/PassportMintPanel";
+import { ClaimReviewPanel } from "@/components/ClaimReviewPanel";
 import { formatINR } from "@/lib/utils";
 import {
   type Product,
+  type PassportAnchor,
   type Weaver,
   getCatalogProduct,
+  getProductPassport,
   getSellerWeaver,
   verifyProductBySerial,
 } from "@/lib/weavelink-api";
 
 export const dynamic = "force-dynamic";
 
-const API_TIMEOUT_MS = 2200;
+const API_TIMEOUT_MS = 15000;
 
 async function withApiTimeout<T>(promise: Promise<T>, operation: string): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -50,20 +54,45 @@ export default async function ProductPage({
   let product: Product | null = null;
   let passportStatus: "authenticated" | "revoked" | "pending" = "pending";
   let weaver: Weaver | null = null;
+  let initialAnchor: PassportAnchor | null = null;
+  let loadError = "";
 
   try {
     product = await withApiTimeout(
       getCatalogProduct(id),
       "catalog product lookup",
     );
-  } catch {
-    notFound();
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("(404)")) {
+      notFound();
+    }
+    loadError =
+      error instanceof Error ? error.message : "Catalog service unavailable";
   }
 
-  if (!product) notFound();
+  if (!product) {
+    return (
+      <div className="mx-auto max-w-2xl px-4 py-16 text-center sm:px-6">
+        <h1 className="font-display text-3xl text-indigo">
+          Product temporarily unavailable
+        </h1>
+        <p className="mt-3 text-sm text-muted">{loadError}</p>
+        <Link
+          href={`/product/${id}`}
+          className="mt-6 inline-flex rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
+        >
+          Retry product
+        </Link>
+      </div>
+    );
+  }
   weaver = await withApiTimeout(
     getSellerWeaver(product.weaverId),
     "seller lookup",
+  ).catch(() => null);
+  initialAnchor = await withApiTimeout(
+    getProductPassport(product.id),
+    "passport status lookup",
   ).catch(() => null);
 
   try {
@@ -71,7 +100,13 @@ export default async function ProductPage({
       verifyProductBySerial(product.serial),
       "passport verification",
     );
-    passportStatus = verification.passportStatus === "valid" ? "authenticated" : "revoked";
+    passportStatus =
+      verification.product.claimStatus === "revoked"
+        ? "revoked"
+        : verification.product.claimStatus === "cooperative_verified" ||
+            verification.product.claimStatus === "gi_authority_verified"
+          ? "authenticated"
+          : "pending";
   } catch {
     passportStatus = product.authenticated ? "authenticated" : "pending";
   }
@@ -167,12 +202,12 @@ export default async function ProductPage({
           </dl>
 
           <div className="mt-6 flex flex-wrap gap-3">
-            <button
-              type="button"
+            <Link
+              href={`/b2b?productId=${encodeURIComponent(product.id)}`}
               className="rounded-full bg-indigo px-5 py-3 text-sm font-medium text-paper"
             >
-              Buy now
-            </button>
+              Request purchase
+            </Link>
             <Link
               href="/b2b"
               className="inline-flex items-center gap-2 rounded-full border border-indigo/20 bg-paper px-5 py-3 text-sm font-medium text-indigo"
@@ -188,6 +223,12 @@ export default async function ProductPage({
               Verify passport
             </Link>
           </div>
+
+          <PassportMintPanel
+            productId={product.id}
+            initialAnchor={initialAnchor}
+          />
+          <ClaimReviewPanel productId={product.id} initialProduct={product} />
 
           <section className="mt-10">
             <div className="flex items-center gap-2 text-loom">

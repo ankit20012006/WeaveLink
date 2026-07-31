@@ -6,10 +6,10 @@ export function SiteFooter() {
       <div className="mx-auto flex max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6 md:flex-row md:items-end md:justify-between">
         <div>
           <p className="font-display text-xl text-indigo">WeaveLink</p>
-        <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
-          Direct market access for genuine handloom — voice-first listing,
-          immutable authenticity, and stories that justify fair price.
-        </p>
+          <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted">
+            Multilingual assisted commerce for handloom — portable catalogs,
+            creator attribution, real capacity, and transparent value.
+          </p>
         </div>
         <div className="flex flex-wrap gap-4 text-sm text-muted">
           <Link href="/marketplace" className="hover:text-indigo">
@@ -23,6 +23,9 @@ export function SiteFooter() {
           </Link>
           <Link href="/verify/WL-KAN-2026-08421" className="hover:text-indigo">
             Verify
+          </Link>
+          <Link href="/resources" className="hover:text-indigo">
+            Learn
           </Link>
         </div>
       </div>

@@ -35,11 +35,15 @@ def _build_error_response(code: str, message: str, request_id: str | None) -> di
 async def lifespan(app: FastAPI):  # noqa: ARG001
     configure_logging()
     logger.info("startup: weavelink api")
+    if settings.app_env == "production" and not settings.database_url:
+        raise RuntimeError("DATABASE_URL is required in production")
     try:
         await bootstrap_catalog_schema_and_seed()
         logger.info("startup: database bootstrap complete")
     except Exception:
         logger.exception("startup: database bootstrap failed")
+        if settings.app_env == "production":
+            raise
     yield
     logger.info("shutdown: weavelink api")
 
@@ -112,16 +116,46 @@ def create_app() -> FastAPI:
     @app.get("/ready")
     async def ready_check() -> dict[str, str]:
         from app.db.session import get_db
+        from app.services.passport_chain import blockchain_is_configured
 
         try:
             async for db in get_db():
                 if db is None:
-                    return {"status": "ready", "database": "demo_store"}
+                    if settings.database_url:
+                        return {
+                            "status": "degraded",
+                            "database": "disconnected",
+                            "blockchain": (
+                                "configured"
+                                if blockchain_is_configured()
+                                else "not_configured"
+                            ),
+                        }
+                    return {
+                        "status": "degraded",
+                        "database": "demo_store",
+                        "blockchain": (
+                            "configured"
+                            if blockchain_is_configured()
+                            else "not_configured"
+                        ),
+                    }
                 await db.execute(text("SELECT 1"))
                 break
-            return {"status": "ready", "database": "connected"}
+            chain_status = (
+                "configured" if blockchain_is_configured() else "not_configured"
+            )
+            return {
+                "status": "ready" if blockchain_is_configured() else "degraded",
+                "database": "connected",
+                "blockchain": chain_status,
+            }
         except Exception:
-            return {"status": "degraded", "database": "disconnected"}
+            return {
+                "status": "degraded",
+                "database": "disconnected",
+                "blockchain": "unknown",
+            }
 
     app.include_router(api_router, prefix="")
 

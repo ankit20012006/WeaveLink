@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, status
 
 from app.db.session import get_db
 from app.schemas.health import HealthStatus, ReadinessStatus
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -20,6 +21,8 @@ async def health_check() -> HealthStatus:
 async def readiness_check(db: AsyncSession | None = Depends(get_db)) -> ReadinessStatus:
     # No DATABASE_URL: in-memory demo store still serves catalog/RFQ for the showcase.
     if db is None:
+        if settings.database_url:
+            return ReadinessStatus(status="degraded", database="disconnected")
         return ReadinessStatus(status="ready", database="demo_store")
 
     try:

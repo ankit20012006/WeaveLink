@@ -12,4 +12,7 @@ api_router.include_router(
     tags=["health"],
 )
 api_router.include_router(catalog.router, prefix=settings.api_v1_prefix)
+
+# Backward-compatible legacy paths for clients still targeting unversioned catalog routes.
+api_router.include_router(catalog.router, prefix="")
 api_router.include_router(auth.router, prefix=settings.api_v1_prefix)
