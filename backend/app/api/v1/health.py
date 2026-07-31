@@ -1,13 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from fastapi import APIRouter, Depends, status
-
+from app.core.config import settings
 from app.db.session import get_db
 from app.schemas.health import HealthStatus, ReadinessStatus
-from app.core.config import settings
+from fastapi import APIRouter, Depends, status
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 

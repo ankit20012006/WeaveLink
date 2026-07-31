@@ -34,7 +34,7 @@ Summary:
 | --- | --- |
 | Root Directory | `backend` |
 | Build | `pip install -r requirements.txt` |
-| Start | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Start | `uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
 | Health check | `/health` |
 | Python | `3.12.x` (`runtime.txt` / `PYTHON_VERSION`) |
 
@@ -46,7 +46,14 @@ Required env for a browser frontend:
 Optional:
 
 - `DATABASE_URL` — Postgres (Render/Supabase). Auto-normalized to `postgresql+asyncpg://`.
+- `SUPABASE_DATABASE_URL` — optional explicit alias for direct Supabase Postgres URL when `DATABASE_URL` is not set.
 - `RAZORPAY_API_KEY` / `RAZORPAY_API_SECRET` — Razorpay credentials for settlement checkout.
+- `OPENAI_API_KEY` — enables multimodal story draft generation and text embeddings.
+- `GOOGLE_AI_API_KEY` — optional alternate story model provider (Gemini).
+- `CHROMA_PERSIST_DIRECTORY` — local vector index path for semantic story search.
+- `OPENAI_*` / `GOOGLE_AI_API_KEY` / `TWILIO_*` / `AWS_*` — AI, object storage, and fallback communication features.
+
+Backend requires `python-dotenv` to load `.env` reliably with `python-multipart` and the new AI/ML clients.
 
 Blueprint file: [`../render.yaml`](../render.yaml).
 
@@ -74,6 +81,11 @@ Blueprint file: [`../render.yaml`](../render.yaml).
 - `GET /api/v1/catalog/products/{product_id}/passport`
 - `POST /api/v1/catalog/products/{product_id}/passport/mint`
 - `GET /api/v1/catalog/passports/{product_id}/metadata`
+- `POST /api/v1/ai/story/draft`
+- `POST /api/v1/ai/story/index`
+- `POST /api/v1/ai/story/search`
+- `POST /api/v1/media/upload`
+- `POST /api/v1/comms/notify`
 - `POST /api/v1/catalog/payments/checkout`
 - `POST /api/v1/catalog/orders`
 - `PATCH /api/v1/catalog/orders/{order_id}/status`

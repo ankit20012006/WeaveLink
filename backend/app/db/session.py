@@ -15,11 +15,12 @@ engine: AsyncEngine | None = None
 SessionLocal: async_sessionmaker[AsyncSession] | None = None
 logger = logging.getLogger("weavelink")
 
-if settings.database_url is None:
-    pass
-else:
+db_url = settings.database_url_direct or settings.database_url
+if db_url is None:
+    db_url = settings.supabase_database_url
+if db_url is not None:
     engine = create_async_engine(
-        settings.database_url,
+        db_url,
         pool_pre_ping=True,
         echo=False,
     )

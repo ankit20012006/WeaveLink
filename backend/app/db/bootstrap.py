@@ -1,17 +1,14 @@
 from __future__ import annotations
 
 from datetime import date as date_type
-from datetime import datetime
-from datetime import timezone
-from datetime import timedelta
-
-from sqlalchemy import func, select
+from datetime import datetime, timedelta, timezone
 
 from app.core.config import settings
 from app.db.base import Base
-from app.db.models import Order, Product, RFQ, UserProfile, Weaver
+from app.db.models import RFQ, Order, Product, UserProfile, Weaver
 from app.db.session import SessionLocal, engine
 from app.services import demo_store
+from sqlalchemy import func, select
 
 
 def _utcnow() -> datetime:

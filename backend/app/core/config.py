@@ -21,16 +21,43 @@ class Settings(BaseSettings):
     supabase_publishable_key_public: str = ""
     supabase_service_role_key: str = ""
     supabase_secret_key: str = ""
+    supabase_database_url: str | None = None
     supabase_jwt_issuer: str = ""
     supabase_jwt_audience: str = "authenticated"
     supabase_jwks_url: str = ""
+    supabase_storage_bucket_product_media: str = "product-media"
+    supabase_storage_bucket_story_audio: str = "story-audio"
+    supabase_storage_bucket_passport_assets: str = "passport-assets"
+    supabase_storage_bucket_profile_media: str = "profile-media"
     product_media_bucket: str = "product-media"
     story_audio_bucket: str = "story-audio"
     passport_assets_bucket: str = "passport-assets"
     profile_media_bucket: str = "profile-media"
+    max_upload_size_mb: int = 50
     max_image_size_mb: int = 8
     max_audio_size_mb: int = 20
     max_video_size_mb: int = 50
+    max_story_vector_hits: int = 6
+    chroma_persist_directory: str = ".weavelink-chroma"
+    openai_api_key: str = ""
+    openai_story_model: str = "gpt-4o-mini"
+    google_ai_api_key: str = ""
+    gemini_story_model: str = "gemini-1.5-flash"
+    openai_embedding_model: str = "text-embedding-3-small"
+    openai_story_temperature: float = 0.4
+    openai_max_tokens: int = 600
+    gemini_story_temperature: float = 0.4
+    gemini_max_output_tokens: int = 600
+    openai_multimodal_supported: bool = True
+    aws_access_key_id: str = ""
+    aws_secret_access_key: str = ""
+    aws_region_name: str = "us-east-1"
+    aws_s3_bucket: str = ""
+    aws_s3_media_prefix: str = "weavelink/media"
+    twilio_account_sid: str = ""
+    twilio_auth_token: str = ""
+    twilio_from_number: str = ""
+    twilio_whatsapp_from: str = ""
     razorpay_api_key: str = ""
     razorpay_api_secret: str = ""
     sepolia_rpc_url: str = ""
@@ -78,6 +105,13 @@ class Settings(BaseSettings):
     @field_validator("database_url_direct", mode="before")
     @classmethod
     def normalize_database_url_direct(cls, value: str | None) -> str | None:
+        if not value or not str(value).strip():
+            return None
+        return cls._to_asyncpg_url(str(value))
+
+    @field_validator("supabase_database_url", mode="before")
+    @classmethod
+    def normalize_supabase_database_url(cls, value: str | None) -> str | None:
         if not value or not str(value).strip():
             return None
         return cls._to_asyncpg_url(str(value))

@@ -1,9 +1,8 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
-
+from app.api.v1 import ai, auth, catalog, comms, health, media
 from app.core.config import settings
-from app.api.v1 import auth, catalog, health
+from fastapi import APIRouter
 
 api_router = APIRouter()
 api_router.include_router(
@@ -12,6 +11,9 @@ api_router.include_router(
     tags=["health"],
 )
 api_router.include_router(catalog.router, prefix=settings.api_v1_prefix)
+api_router.include_router(ai.router, prefix=settings.api_v1_prefix)
+api_router.include_router(media.router, prefix=settings.api_v1_prefix)
+api_router.include_router(comms.router, prefix=settings.api_v1_prefix)
 
 # Backward-compatible legacy paths for clients still targeting unversioned catalog routes.
 api_router.include_router(catalog.router, prefix="")
