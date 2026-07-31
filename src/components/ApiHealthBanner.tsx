@@ -67,12 +67,22 @@ export function ApiHealthBanner() {
   }, []);
 
   useEffect(() => {
-    void refresh();
+    let isActive = true;
+
+    void getApiReadiness().then((readiness) => {
+      if (isActive) {
+        setState({ readiness, isChecking: false });
+      }
+    });
+
     const timer = setInterval(() => {
       void refresh();
     }, 30000);
 
-    return () => clearInterval(timer);
+    return () => {
+      isActive = false;
+      clearInterval(timer);
+    };
   }, [refresh]);
 
   const status = getApiHealthViewStatus(state.readiness, state.isChecking);
