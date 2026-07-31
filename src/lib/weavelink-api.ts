@@ -1,5 +1,5 @@
 import { type Order, type Product, type Weaver } from "@/data/mock";
-import { resolveAuthHeaders } from "@/lib/weave-session";
+import { getStoredOrDefaultWeaverId, resolveAuthHeaders } from "@/lib/weave-session";
 
 export type { Order, Product, Weaver };
 
@@ -98,6 +98,47 @@ export type ApiReadiness = {
   service?: string;
 };
 
+export type StoryDraftPayload = {
+  provider?: "openai" | "gemini";
+  storyModel?: string;
+  photoUrls?: string[];
+  seedText?: string;
+  voiceTranscript?: string;
+  contextNotes?: string;
+  language?: string;
+  maxTags?: number;
+};
+
+export type StoryDraftResult = {
+  status: "ready" | "not_configured" | "error";
+  storyTitle: string;
+  story: string;
+  tags: string[];
+  language: string;
+  mediaCount: number;
+  message?: string;
+};
+
+export type MediaUploadPayload = {
+  file: Blob;
+  mediaType: "image" | "audio" | "video";
+  actorId?: string;
+  preferredBucket?: string;
+  filename?: string;
+};
+
+export type MediaUploadResult = {
+  status: "uploaded" | "not_configured" | "invalid" | "error";
+  provider: string | null;
+  bucket: string;
+  path: string;
+  url: string;
+  contentType: string | null;
+  mediaType: "image" | "audio" | "video";
+  bytes: number;
+  message?: string;
+};
+
 type CatalogFilters = {
   cluster?: string | null;
   technique?: string | null;
@@ -169,6 +210,26 @@ async function requestJson<T>(path: string, init: RequestInit = {}): Promise<T> 
 
   const response = await fetch(`${CLEAN_API_URL}${path}`, {
     ...init,
+    headers,
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    const errorMessage = body || `${response.status} ${response.statusText}`;
+    throw new Error(`WeaveLink API error (${response.status}): ${errorMessage}`);
+  }
+
+  return response.json() as Promise<T>;
+}
+
+async function requestMultipart<T>(path: string, form: FormData, init: Omit<RequestInit, "body"> = {}): Promise<T> {
+  const headers = await resolveAuthHeaders(init.headers);
+
+  const response = await fetch(`${CLEAN_API_URL}${path}`, {
+    ...init,
+    method: init.method ?? "POST",
+    body: form,
     headers,
     cache: "no-store",
   });
@@ -332,6 +393,30 @@ export async function mintProductPassport(
       }),
     },
   );
+}
+
+export async function createStoryDraft(payload: StoryDraftPayload): Promise<StoryDraftResult> {
+  return requestJson<StoryDraftResult>("/ai/story/draft", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function uploadMedia(payload: MediaUploadPayload): Promise<MediaUploadResult> {
+  const form = new FormData();
+
+  const actorId = payload.actorId?.trim() || getStoredOrDefaultWeaverId();
+  const fileName = payload.filename?.trim() || "evidence.bin";
+
+  form.append("file", payload.file, fileName);
+  form.append("media_type", payload.mediaType);
+  form.append("actor_id", actorId);
+  if (payload.preferredBucket) {
+    form.append("preferred_bucket", payload.preferredBucket);
+  }
+
+  return requestMultipart<MediaUploadResult>("/media/upload", form);
 }
 
 export async function verifyProductClaim(

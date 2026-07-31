@@ -2,44 +2,23 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { CircleAlert, CircleCheck, CircleX, RefreshCw } from "lucide-react";
+import { getApiReadiness, type ApiReadiness } from "@/lib/weavelink-api";
 import {
-  getApiReadiness,
-  type ApiReadiness,
-  type ApiReadinessStatus,
-} from "@/lib/weavelink-api";
+  getApiHealthStatusCopy,
+  getApiHealthViewStatus,
+  type ApiHealthViewStatus,
+} from "@/components/api-health-state";
 
 type ApiBannerState = {
-  readiness: ApiReadiness;
-  label: string;
+  readiness: ApiReadiness | null;
   isChecking: boolean;
 };
 
-function statusCopy(status: ApiReadinessStatus): {
-  label: string;
-  hint: string;
-} {
-  if (status === "ready") {
-    return {
-      label: "Backend live",
-      hint: "Catalog and RFQ actions are hitting API-backed endpoints",
-    };
+function paletteClass(status: ApiHealthViewStatus): string {
+  if (status === "checking") {
+    return "border-slate-200 bg-paper text-muted";
   }
 
-  if (status === "degraded") {
-    return {
-      label: "Backend degraded",
-      hint:
-        "API returned partial errors. The app is using whatever endpoints are available and retrying failed calls.",
-    };
-  }
-
-  return {
-    label: "Backend offline",
-    hint: "Backend is offline; retry with a live endpoint to restore full behavior.",
-  };
-}
-
-function paletteClass(status: ApiReadinessStatus): string {
   if (status === "ready") {
     return "border-loom-soft bg-loom-soft text-loom";
   }
@@ -51,7 +30,11 @@ function paletteClass(status: ApiReadinessStatus): string {
   return "border-lac/40 bg-lac-soft text-lac";
 }
 
-function statusIcon(status: ApiReadinessStatus) {
+function statusIcon(status: ApiHealthViewStatus) {
+  if (status === "checking") {
+    return <RefreshCw size={14} className="animate-spin" />;
+  }
+
   if (status === "ready") {
     return <CircleCheck size={14} />;
   }
@@ -65,8 +48,7 @@ function statusIcon(status: ApiReadinessStatus) {
 
 export function ApiHealthBanner() {
   const [state, setState] = useState<ApiBannerState>({
-    readiness: { status: "offline", database: "disconnected" },
-    label: "Checking backend...",
+    readiness: null,
     isChecking: true,
   });
 
@@ -74,15 +56,12 @@ export function ApiHealthBanner() {
     setState((prev) => ({
       ...prev,
       isChecking: true,
-      label: "Checking backend...",
     }));
 
     const readiness = await getApiReadiness();
-    const copy = statusCopy(readiness.status);
 
     setState({
       readiness,
-      label: copy.label,
       isChecking: false,
     });
   }, []);
@@ -96,16 +75,17 @@ export function ApiHealthBanner() {
     return () => clearInterval(timer);
   }, [refresh]);
 
-  const copy = statusCopy(state.readiness.status);
-  const colors = paletteClass(state.readiness.status);
+  const status = getApiHealthViewStatus(state.readiness, state.isChecking);
+  const copy = getApiHealthStatusCopy(status);
+  const colors = paletteClass(status);
 
   return (
     <div className={`mt-2 w-full rounded-xl border px-3 py-2 text-xs sm:text-sm ${colors}`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          {statusIcon(state.readiness.status)}
+          {statusIcon(status)}
           <p>
-            <span className="font-medium">{state.label}</span>
+            <span className="font-medium">{copy.label}</span>
             <span className="ml-2 text-ink/70">{copy.hint}</span>
           </p>
         </div>

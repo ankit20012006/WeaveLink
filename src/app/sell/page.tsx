@@ -19,8 +19,11 @@ import {
   ClipboardCheck,
 } from "lucide-react";
 import Link from "next/link";
-import { createProduct } from "@/lib/weavelink-api";
-import { getSupabaseBrowserClient } from "@/lib/supabase-browser";
+import {
+  createProduct,
+  createStoryDraft,
+  uploadMedia,
+} from "@/lib/weavelink-api";
 import { VerificationQr } from "@/components/VerificationQr";
 
 const languages = [
@@ -64,6 +67,12 @@ type DraftItem = {
   nextRetryAt: string | null;
   lastFailure?: string;
   clientRef: string;
+  imageUrls: string[];
+  audioUrl?: string;
+};
+
+type UploadedEvidence = {
+  serial: string;
   imageUrls: string[];
   audioUrl?: string;
 };
@@ -157,12 +166,21 @@ export default function SellPage() {
   const [queuedDrafts, setQueuedDrafts] = useState<DraftItem[]>([]);
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
-  const [isOnline, setIsOnline] = useState(true);
+  const [isOnline, setIsOnline] = useState<boolean>(() => {
+    if (typeof window === "undefined") {
+      return true;
+    }
+    return window.navigator.onLine;
+  });
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioPreviewUrl, setAudioPreviewUrl] = useState("");
   const [photos, setPhotos] = useState<File[]>([]);
   const [captureError, setCaptureError] = useState("");
   const [uploadingEvidence, setUploadingEvidence] = useState(false);
+  const [isAiDrafting, setIsAiDrafting] = useState(false);
+  const [pendingEvidence, setPendingEvidence] = useState<UploadedEvidence | null>(
+    null,
+  );
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -189,8 +207,6 @@ export default function SellPage() {
     let failedCount = 0;
     let exhaustedCount = 0;
     const nextDrafts = [...queuedDrafts];
-    const nextRetryAt = new Date(Date.now() + RETRY_BASE_MS).toISOString();
-
     for (let index = 0; index < nextDrafts.length; index += 1) {
       const entry = nextDrafts[index];
       if (entry.synced || !isDueForRetry(entry)) {
@@ -260,7 +276,6 @@ export default function SellPage() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    setIsOnline(window.navigator.onLine);
     const loadQueue = () => {
       try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
@@ -333,7 +348,9 @@ export default function SellPage() {
       const recorder = new MediaRecorder(stream);
       recorderRef.current = recorder;
       recorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
       recorder.onstop = () => {
         const blob = new Blob(audioChunksRef.current, {
@@ -349,6 +366,7 @@ export default function SellPage() {
             current.storySeed ||
             `Original ${lang} voice note captured. Add the approved factual transcript here.`,
         }));
+        setPendingEvidence(null);
       };
       recorder.start();
       setMode("voice");
@@ -362,41 +380,101 @@ export default function SellPage() {
 
   const uploadEvidence = async (
     serial: string,
-  ): Promise<{ imageUrls: string[]; audioUrl?: string }> => {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) throw new Error("Supabase authentication is not configured.");
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    if (!session) throw new Error("Sign in as a verified seller before uploading.");
-
-    const basePath = `${session.user.id}/${serial}`;
+  ): Promise<UploadedEvidence> => {
     const imageUrls: string[] = [];
+
     for (const [index, photo] of photos.entries()) {
-      const extension = photo.name.split(".").pop()?.toLowerCase() || "jpg";
-      const path = `${basePath}/photo-${index + 1}.${extension}`;
-      const { error } = await supabase.storage
-        .from("product-media")
-        .upload(path, photo, { contentType: photo.type, upsert: false });
-      if (error) throw error;
-      imageUrls.push(
-        supabase.storage.from("product-media").getPublicUrl(path).data.publicUrl,
-      );
+      const response = await uploadMedia({
+        file: photo,
+        mediaType: "image",
+        actorId: serial,
+        filename: `${serial}-photo-${index + 1}`,
+      });
+      if (response.status !== "uploaded" || !response.url) {
+        throw new Error(response.message || "Image upload failed.");
+      }
+
+      imageUrls.push(response.url);
     }
 
     let audioUrl: string | undefined;
     if (audioBlob) {
-      const path = `${basePath}/artisan-voice.webm`;
-      const { error } = await supabase.storage
-        .from("product-media")
-        .upload(path, audioBlob, {
-          contentType: audioBlob.type || "audio/webm",
-          upsert: false,
-        });
-      if (error) throw error;
-      audioUrl = supabase.storage.from("product-media").getPublicUrl(path).data.publicUrl;
+      const audioFile = new File([audioBlob], `${serial}-voice.webm`, {
+        type: audioBlob.type || "audio/webm",
+      });
+
+      const response = await uploadMedia({
+        file: audioFile,
+        mediaType: "audio",
+        actorId: serial,
+        filename: audioFile.name,
+      });
+      if (response.status !== "uploaded" || !response.url) {
+        throw new Error(response.message || "Audio upload failed.");
+      }
+
+      audioUrl = response.url;
     }
-    return { imageUrls, audioUrl };
+
+    return {
+      serial,
+      imageUrls,
+      audioUrl,
+    };
+  };
+
+  const uploadEvidenceIfNeeded = async (): Promise<UploadedEvidence> => {
+    if (pendingEvidence) {
+      return pendingEvidence;
+    }
+
+    const evidence = await uploadEvidence(generateSerial());
+    setPendingEvidence(evidence);
+    return evidence;
+  };
+
+  const generateAiDraft = async () => {
+    if (uploadingEvidence || isAiDrafting) {
+      return;
+    }
+
+    if (!audioBlob && photos.length === 0 && !draft.storySeed.trim()) {
+      setCaptureError("Add photos, a voice note, or story context first.");
+      return;
+    }
+
+    setIsAiDrafting(true);
+    setCaptureError("");
+    try {
+      const evidence = await uploadEvidenceIfNeeded();
+      const response = await createStoryDraft({
+        photoUrls: evidence.imageUrls,
+        seedText: draft.storySeed || undefined,
+        language: lang,
+        contextNotes: `Mode ${mode} | Category ${draft.category || "not set"}`,
+        maxTags: 6,
+      });
+      if (response.status !== "ready") {
+        throw new Error(response.message || "AI draft not available.");
+      }
+
+      setDraft((current) => ({
+        ...current,
+        title: current.title || response.storyTitle,
+        storySeed: response.story,
+        tags: response.tags.length
+          ? response.tags.join(" · ")
+          : current.tags,
+      }));
+      setSyncMessage("AI story draft generated. Review and approve details.");
+      setPendingEvidence(evidence);
+    } catch (error) {
+      setCaptureError(
+        error instanceof Error ? error.message : "AI draft generation failed.",
+      );
+    } finally {
+      setIsAiDrafting(false);
+    }
   };
 
   const addDraftToQueue = async () => {
@@ -407,37 +485,36 @@ export default function SellPage() {
     }
     setUploadingEvidence(true);
     setCaptureError("");
-    const serial = generateSerial();
-    let evidence: { imageUrls: string[]; audioUrl?: string };
     try {
-      evidence = await uploadEvidence(serial);
+      const evidence = await uploadEvidenceIfNeeded();
+
+      const nextDraft: DraftItem = {
+        id: evidence.serial,
+        clientRef: getClientRef(),
+        imageUrls: evidence.imageUrls,
+        audioUrl: evidence.audioUrl,
+        language: lang,
+        mode,
+        title: draft.title,
+        category: draft.category,
+        suggestedPrice: draft.suggestedPrice,
+        tags: draft.tags,
+        storySeed: draft.storySeed,
+        createdAt: new Date().toISOString(),
+        synced: false,
+        retryCount: 0,
+        nextRetryAt: null,
+      };
+
+      setQueuedDrafts((current) => [...current, nextDraft]);
+      setPassports((current) => [nextDraft.id, ...current].slice(0, 8));
+      setPendingEvidence(null);
+      setStep(3);
     } catch (error) {
       setCaptureError(
         error instanceof Error ? error.message : "Evidence upload failed.",
       );
-      setUploadingEvidence(false);
-      return;
     }
-    const nextDraft: DraftItem = {
-      id: serial,
-      clientRef: getClientRef(),
-      imageUrls: evidence.imageUrls,
-      audioUrl: evidence.audioUrl,
-      language: lang,
-      mode,
-      title: draft.title,
-      category: draft.category,
-      suggestedPrice: draft.suggestedPrice,
-      tags: draft.tags,
-      storySeed: draft.storySeed,
-      createdAt: new Date().toISOString(),
-      synced: false,
-      retryCount: 0,
-      nextRetryAt: null,
-    };
-    setQueuedDrafts((current) => [...current, nextDraft]);
-    setPassports((current) => [nextDraft.id, ...current].slice(0, 8));
-    setStep(3);
     setUploadingEvidence(false);
   };
 
@@ -568,10 +645,11 @@ export default function SellPage() {
                     capture="environment"
                     multiple
                     className="sr-only"
-                    onChange={(event) => {
-                      setMode("photo");
-                      setPhotos(Array.from(event.target.files ?? []).slice(0, 5));
-                    }}
+        onChange={(event) => {
+          setPendingEvidence(null);
+          setMode("photo");
+          setPhotos(Array.from(event.target.files ?? []).slice(0, 5));
+        }}
                   />
                   <Camera className="text-indigo" />
                   <p className="mt-3 font-medium text-ink">Photo to catalog</p>
@@ -691,9 +769,19 @@ export default function SellPage() {
               </div>
               <button
                 type="button"
+                onClick={() => void generateAiDraft()}
+                disabled={uploadingEvidence || isAiDrafting}
+                className="mt-8 rounded-full bg-warp-gold/90 px-5 py-2.5 text-sm font-medium text-paper"
+              >
+                {isAiDrafting
+                  ? "Generating story with AI..."
+                  : "Generate AI story draft"}
+              </button>
+              <button
+                type="button"
                 onClick={() => void addDraftToQueue()}
-                disabled={uploadingEvidence}
-                className="mt-8 rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
+                disabled={uploadingEvidence || isAiDrafting}
+                className="mt-4 rounded-full bg-indigo px-5 py-2.5 text-sm font-medium text-paper"
               >
                 {uploadingEvidence
                   ? "Uploading original evidence..."

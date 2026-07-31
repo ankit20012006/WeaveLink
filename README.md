@@ -66,7 +66,7 @@ This repo ships a **native Python** Render Blueprint — **no Docker**.
    - **Root Directory:** `backend`
    - **Runtime:** Python 3
    - **Build command:** `pip install -r requirements.txt`
-   - **Start command:** `uvicorn app.main:app --host 0.0.0.0 --port $PORT`
+   - **Start command:** `uv run uvicorn app.main:app --host 0.0.0.0 --port $PORT`
    - **Health check path:** `/health`
 4. Set environment variables:
 
